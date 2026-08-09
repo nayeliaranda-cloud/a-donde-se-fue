@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(curl -s http://localhost:8934/index.html)",
+      "Bash(pkill -f \"http.server 8934\")"
+    ]
+  }
+}
