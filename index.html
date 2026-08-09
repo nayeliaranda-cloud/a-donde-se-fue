@@ -741,13 +741,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 .bi-content{display:none;}
 .bi-content.on{display:block;}
 .bi-btn{width:100%;padding:10px;background:#C4704F;color:#fff;border:none;border-radius:10px;
-  font-size:13px;font-weight:600;cursor:pointer;font-family:var(--fb);}.print-only{display:none;}
-@media print{
-  body *{visibility:hidden;}
-  .print-only, .print-only *{visibility:visible;}
-  .print-only{display:block;position:absolute;top:0;left:0;width:100%;padding:24px;font-family:var(--fb);}
-  @page{margin:16mm;}
-}
+  font-size:13px;font-weight:600;cursor:pointer;font-family:var(--fb);}
 </style>
 </head>
 <body>
@@ -4045,6 +4039,186 @@ function dlgAbonarSobrante(monto, snapshot) {
   });
 }
 
+// ── GENERADOR DE PDF (reporte financiero, sin librerías externas) ──
+// Construye un PDF válido a mano (objetos PDF 1.4 + tabla xref) usando solo
+// las fuentes estándar Helvetica/Helvetica-Bold — así el PDF se puede
+// adjuntar de verdad al compartir por WhatsApp (vía Web Share API) sin
+// sumarle al archivo único de la app una librería externa de cientos de KB.
+var PDF_ANCHO_NUM = {
+  ' ':278,'$':556,'%':889,'-':333,',':278,'.':278,'/':278,
+  '0':556,'1':556,'2':556,'3':556,'4':556,'5':556,'6':556,'7':556,'8':556,'9':556
+};
+function pdfAnchoNum(str, size) {
+  var w = 0;
+  for (var i = 0; i < str.length; i++) w += (PDF_ANCHO_NUM[str[i]] != null ? PDF_ANCHO_NUM[str[i]] : 556);
+  return w * size / 1000;
+}
+function pdfAnchoAprox(str, size, bold) {
+  return str.length * size * (bold ? 0.56 : 0.52);
+}
+var PDF_MAPA_ESP = {0x2014:0x97,0x2013:0x96,0x2026:0x85,0x2022:0x95,0x203A:0x9B,0x2039:0x8B,0x2018:0x91,0x2019:0x92,0x201C:0x93,0x201D:0x94};
+// Sanea a Latin-1/WinAnsi (las únicas 256 posiciones que las fuentes base del
+// PDF saben dibujar) — los emoji del resto de la app no tienen glifo aquí y
+// se omiten; un reporte financiero sin emoji además luce más "de banco".
+function pdfTexto(s) {
+  s = String(s == null ? '' : s);
+  var out = '';
+  for (var i = 0; i < s.length; i++) {
+    var cp = s.codePointAt(i);
+    if (cp > 0xFFFF) { i++; continue; }
+    if (cp <= 0xFF) { out += String.fromCharCode(cp); continue; }
+    if (PDF_MAPA_ESP[cp] !== undefined) { out += String.fromCharCode(PDF_MAPA_ESP[cp]); continue; }
+  }
+  return out;
+}
+function pdfEscStr(s) {
+  return pdfTexto(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+}
+function PDFReporte() {
+  this.W = 612; this.H = 792; this.M = 50;
+  this.ops = [];
+  this._fill = null; this._stroke = null; this._lw = null;
+}
+PDFReporte.prototype._hexRGB = function(hex) {
+  var r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
+  return r.toFixed(3)+' '+g.toFixed(3)+' '+b.toFixed(3);
+};
+PDFReporte.prototype.fillColor = function(hex) {
+  if (hex === this._fill) return; this._fill = hex;
+  this.ops.push(this._hexRGB(hex)+' rg');
+};
+PDFReporte.prototype.strokeColor = function(hex) {
+  if (hex === this._stroke) return; this._stroke = hex;
+  this.ops.push(this._hexRGB(hex)+' RG');
+};
+PDFReporte.prototype.rect = function(x,y,w,h,hex) {
+  this.fillColor(hex);
+  this.ops.push(x.toFixed(2)+' '+y.toFixed(2)+' '+w.toFixed(2)+' '+h.toFixed(2)+' re f');
+};
+PDFReporte.prototype.linea = function(x1,y1,x2,y2,hex,grosor) {
+  this.strokeColor(hex);
+  if (grosor !== this._lw) { this._lw = grosor; this.ops.push(grosor.toFixed(2)+' w'); }
+  this.ops.push(x1.toFixed(2)+' '+y1.toFixed(2)+' m '+x2.toFixed(2)+' '+y2.toFixed(2)+' l S');
+};
+// opts: {bold, size, color, align:'left'|'right'|'center', numeric:bool}
+PDFReporte.prototype.texto = function(x, y, str, opts) {
+  opts = opts || {};
+  var bold = !!opts.bold, size = opts.size || 10, hex = opts.color || '#3D2B1F';
+  var s = pdfEscStr(str);
+  var ancho = opts.numeric ? pdfAnchoNum(pdfTexto(str), size) : pdfAnchoAprox(pdfTexto(str), size, bold);
+  var xx = x;
+  if (opts.align === 'right') xx = x - ancho;
+  else if (opts.align === 'center') xx = x - ancho/2;
+  this.fillColor(hex);
+  var font = bold ? 'F2' : 'F1';
+  this.ops.push('BT /'+font+' '+size+' Tf '+xx.toFixed(2)+' '+y.toFixed(2)+' Td ('+s+') Tj ET');
+};
+PDFReporte.prototype.bytes = function() {
+  var objetos = [];
+  var stream = this.ops.join('\n');
+  objetos[0] = '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n';
+  objetos[1] = '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n';
+  objetos[2] = '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+this.W+' '+this.H+'] ' +
+    '/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>\nendobj\n';
+  objetos[3] = '4 0 obj\n<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream\nendobj\n';
+  objetos[4] = '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n';
+  objetos[5] = '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n';
+  var out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+  var offsets = [0];
+  for (var i = 0; i < objetos.length; i++) { offsets.push(out.length); out += objetos[i]; }
+  var xrefStart = out.length;
+  out += 'xref\n0 '+(objetos.length+1)+'\n0000000000 65535 f \n';
+  for (var j = 1; j <= objetos.length; j++) out += String(offsets[j]).padStart(10,'0') + ' 00000 n \n';
+  out += 'trailer\n<< /Size '+(objetos.length+1)+' /Root 1 0 R >>\nstartxref\n'+xrefStart+'\n%%EOF';
+  var buf = new Uint8Array(out.length);
+  for (var k = 0; k < out.length; k++) buf[k] = out.charCodeAt(k) & 0xFF;
+  return buf;
+};
+
+// Arma el reporte financiero (mismos datos que textoCierre/enviarCorreoCierre)
+// como un PDF de una página con tablas alineadas — el "look" de estado de cuenta.
+function construirReportePDF(item) {
+  var pos = item.dif >= 0;
+  var nom = E.perfil.nom || '';
+  var esCerrado = item.cerrado !== false;
+  var doc = new PDFReporte();
+  var M = doc.M, W = doc.W;
+  var y = doc.H - M;
+
+  var tituloPeriodo = esCerrado
+    ? 'Cierre de ' + item.mes + (nom ? ' — ' + nom : '')
+    : 'Del 1 al ' + (item.fecha ? new Date(item.fecha).getDate() : new Date().getDate()) + ' de ' + item.mes + (nom ? ' — ' + nom : '');
+  var etiquetaEstado = esCerrado ? 'ESTADO DE CUENTA FINAL' : 'CORTE PARCIAL · EL MES SIGUE ABIERTO';
+
+  doc.texto(W/2, y, '¿A Dónde Se Fue?', {bold:true, size:20, color:'#C4704F', align:'center'});
+  y -= 20;
+  doc.texto(W/2, y, tituloPeriodo, {size:12, color:'#6B4C3B', align:'center'});
+  y -= 16;
+  doc.texto(W/2, y, etiquetaEstado, {bold:true, size:8, color:'#C4704F', align:'center'});
+  y -= 14;
+  doc.linea(M, y, W-M, y, '#C4704F', 2);
+  y -= 26;
+
+  doc.texto(M, y, 'Entró', {size:11, color:'#6B4C3B'});
+  doc.texto(W-M, y, fmx(item.mto), {size:11, bold:true, align:'right', numeric:true});
+  y -= 18;
+  doc.texto(M, y, 'Salió', {size:11, color:'#6B4C3B'});
+  doc.texto(W-M, y, fmx(item.gasto), {size:11, bold:true, align:'right', numeric:true});
+  y -= 10;
+  doc.linea(M, y, W-M, y, '#F0E9DF', 1);
+  y -= 18;
+  doc.texto(M, y, pos ? 'Te sobró' : 'Te pasaste', {size:12, bold:true});
+  doc.texto(W-M, y, fmx(Math.abs(item.dif)), {size:14, bold:true, align:'right', numeric:true, color: pos?'#4E7A52':'#D9534F'});
+  y -= 34;
+
+  var sobres = (item.sobres || []).filter(function(s){ return s.mto > 0; });
+  doc.texto(M, y, 'DESGLOSE POR SOBRE', {size:10, bold:true, color:'#6B4C3B'});
+  y -= 8;
+  doc.linea(M, y, W-M, y, '#F0E9DF', 1);
+  y -= 18;
+  if (!sobres.length) {
+    doc.texto(M, y, 'Sin gastos registrados', {size:10, color:'#7D5F4E'});
+    y -= 18;
+  } else {
+    sobres.forEach(function(s, idx) {
+      if (idx % 2 === 0) doc.rect(M-4, y-4, (W-2*M)+8, 16, '#FAF6F0');
+      doc.texto(M, y, s.nom, {size:10});
+      doc.texto(W-M-70, y, fmx(s.mto), {size:10, bold:true, align:'right', numeric:true});
+      var lim = E.lims[s.id] || 0;
+      var pct = lim > 0 ? Math.round(s.mto/lim*100) : null;
+      doc.texto(W-M, y, pct != null ? pct+'%' : '—', {size:10, color:'#7D5F4E', align:'right', numeric: pct != null});
+      y -= 18;
+    });
+  }
+  y -= 12;
+
+  var metas = (item.metas || []).filter(function(m){ return (m.act||0) > 0; });
+  if (metas.length) {
+    doc.texto(M, y, 'MIS METAS', {size:10, bold:true, color:'#6B4C3B'});
+    y -= 8;
+    doc.linea(M, y, W-M, y, '#F0E9DF', 1);
+    y -= 18;
+    metas.forEach(function(m, idx) {
+      if (idx % 2 === 0) doc.rect(M-4, y-4, (W-2*M)+8, 16, '#FAF6F0');
+      doc.texto(M, y, m.nom, {size:10});
+      var pct2 = m.meta > 0 ? Math.round((m.act||0)/m.meta*100) : 0;
+      doc.texto(W-M-70, y, fmx(m.act||0) + ' / ' + fmx(m.meta), {size:10, bold:true, color:'#4E7A52', align:'right'});
+      doc.texto(W-M, y, pct2+'%', {size:10, color:'#7D5F4E', align:'right', numeric:true});
+      y -= 18;
+    });
+    y -= 12;
+  }
+
+  doc.linea(M, y, W-M, y, '#F0E9DF', 1);
+  y -= 16;
+  doc.texto(M, y, 'Racha: ' + (item.racha||0) + ' días  ·  Generado con ¿A Dónde Se Fue?', {size:9, color:'#7D5F4E'});
+
+  return doc.bytes();
+}
+function nombreArchivoPDF(item) {
+  return 'Reporte ' + String(item.mes||'').replace(/\s+/g,'-') + '.pdf';
+}
+
 // ── COMPARTIR CIERRE MENSUAL — WhatsApp ───────────
 function textoCierre(item) {
   var pos = item.dif >= 0;
@@ -4084,32 +4258,55 @@ function textoCierre(item) {
   }
 
   var tituloCaja = esCerrado ? 'Cierre de ' + item.mes : 'Corte al ' + (item.fecha ? new Date(item.fecha).getDate() : new Date().getDate()) + ' de ' + item.mes;
-  return '╔══════════════════════╗\n' +
-    '║  💰 ¿A DÓNDE SE FUE?  ║\n' +
-    '║  ' + tituloCaja.slice(0,20).padEnd(20) + '║\n' +
-    '╚══════════════════════╝\n\n' +
-    (esCerrado ? '' : '📌 _Corte parcial — el mes sigue abierto_\n\n') +
-    '💰 *ENTRÓ:* ' + fmx(item.mto) + '\n' +
-    '📤 *SALIÓ:* ' + fmx(item.gasto) + '\n' +
-    '─────────────────────────\n' +
+  return '💰 *¿A Dónde Se Fue?* — ' + tituloCaja + '\n' +
+    (esCerrado ? '' : '📌 _Corte parcial — el mes sigue abierto_\n') +
+    '\n' +
+    'Entró: ' + fmx(item.mto) + '\n' +
+    'Salió: ' + fmx(item.gasto) + '\n' +
     (pos
-      ? '✅ *ME SOBRÓ: ' + fmx(item.dif) + '* 🎉'
-      : '⚠️ *ME PASÉ: ' + fmx(Math.abs(item.dif)) + '*') + '\n' +
-    (compLinea ? compLinea + '\n' : '') +
-    '\n🗂 *DESGLOSE POR SOBRE*\n' +
-    '─────────────────────────\n' +
-    (sobresLineas || '   Sin gastos registrados') + '\n' +
-    (metasLineas
-      ? '\n🎯 *MIS METAS*\n─────────────────────────\n' + metasLineas + '\n'
-      : '') +
+      ? '✅ *Te sobró: ' + fmx(item.dif) + '*'
+      : '⚠️ *Te pasaste: ' + fmx(Math.abs(item.dif)) + '*') +
+    (compLinea ? compLinea : '') + '\n' +
+    '\n*Desglose por sobre*\n' +
+    (sobresLineas || 'Sin gastos registrados') + '\n' +
+    (metasLineas ? '\n*Mis metas*\n' + metasLineas + '\n' : '') +
     '\n🔥 Racha: ' + (item.racha || 0) + ' días\n' +
-    '─────────────────────────\n' +
-    '_Generado con ¿A Dónde Se Fue? 📱_';
+    '_Generado con ¿A Dónde Se Fue?_';
+}
+
+// Texto corto para acompañar el PDF cuando se comparte como archivo adjunto
+// (WhatsApp/otras apps) — el detalle completo va en el PDF, no hace falta
+// repetirlo en el mensaje.
+function captionCierre(item) {
+  var pos = item.dif >= 0;
+  var esCerrado = item.cerrado !== false;
+  var tituloCaja = esCerrado ? 'Cierre de ' + item.mes : 'Corte de ' + item.mes;
+  return '💰 *¿A Dónde Se Fue?* — ' + tituloCaja + '\n' +
+    (pos ? '✅ Te sobraron ' + fmx(item.dif) : '⚠️ Te pasaste ' + fmx(Math.abs(item.dif))) + ' este periodo.\n' +
+    '📎 Reporte completo en el PDF adjunto.';
 }
 
 function compartirCierre(item) {
   cerrarDlg();
-  var texto = textoCierre(item);
+  var bytes = construirReportePDF(item);
+  var archivo = null;
+  try { archivo = new File([bytes], nombreArchivoPDF(item), {type:'application/pdf'}); } catch(e) {}
+  if (archivo && navigator.share && navigator.canShare && navigator.canShare({files:[archivo]})) {
+    navigator.share({files:[archivo], title:'¿A Dónde Se Fue?', text: captionCierre(item)})
+      .then(function() { toast('¡Reporte compartido! 📄'); })
+      .catch(function(err) {
+        if (err && err.name === 'AbortError') return; // la usuaria canceló el share sheet
+        compartirCierreTextoPlano(item);
+      });
+  } else {
+    compartirCierreTextoPlano(item);
+  }
+}
+// Fallback cuando el navegador no soporta adjuntar archivos vía Web Share
+// (la mayoría de navegadores de escritorio) — manda el texto por wa.me y
+// sugiere descargar el PDF aparte para adjuntarlo a mano.
+function compartirCierreTextoPlano(item) {
+  var texto = textoCierre(item) + '\n\n_Tip: descarga el PDF del reporte y adjúntalo aquí mismo 📎_';
   window.location.href = 'https://wa.me/?text=' + encodeURIComponent(texto);
   toast('Abriendo WhatsApp 💬');
 }
@@ -4145,73 +4342,14 @@ function copiarTextoCierre(item) {
 
 // ── DESCARGAR PDF DEL CIERRE (vía diálogo de impresión) ──
 function descargarPDFCierre(item) {
-  var pos = item.dif >= 0;
-  var nom = E.perfil.nom || '';
-  var esCerrado = item.cerrado !== false; // los snapshots de historial no traían este campo antes — tratar como cerrado por compatibilidad
-  var tituloPeriodo, etiquetaEstado;
-  if (esCerrado) {
-    tituloPeriodo = 'Cierre de ' + item.mes + (nom ? ' — ' + nom : '');
-    etiquetaEstado = '<div style="display:inline-block;background:#F0E9DF;color:#6B4C3B;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border-radius:99px;padding:3px 10px;margin-top:6px">Estado de cuenta final</div>';
-  } else {
-    var fechaCorte = item.fecha ? new Date(item.fecha) : new Date();
-    tituloPeriodo = 'Del 1 al ' + fechaCorte.getDate() + ' de ' + item.mes + (nom ? ' — ' + nom : '');
-    etiquetaEstado = '<div style="display:inline-block;background:#FDF2EC;color:#C4704F;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border-radius:99px;padding:3px 10px;margin-top:6px">Corte parcial · el mes sigue abierto</div>';
-  }
-
-  var sobresHTML = (item.sobres || [])
-    .filter(function(s) { return s.mto > 0; })
-    .map(function(s) {
-      var lim = E.lims[s.id] || 0;
-      var pct = lim > 0 ? Math.round(s.mto/lim*100) : null;
-      return '<tr style="border-bottom:1px solid #F0E9DF">' +
-        '<td style="padding:8px 6px">' + s.ico + ' ' + escHtml(s.nom) + '</td>' +
-        '<td style="padding:8px 6px;text-align:right;font-weight:600">' + fmx(s.mto) + '</td>' +
-        '<td style="padding:8px 6px;text-align:right;color:#7D5F4E">' + (pct != null ? pct + '%' : '—') + '</td>' +
-        '</tr>';
-    }).join('');
-
-  var metasHTML = (item.metas || [])
-    .filter(function(m) { return (m.act||0) > 0; })
-    .map(function(m) {
-      var pct = m.meta > 0 ? Math.round((m.act||0)/m.meta*100) : 0;
-      return '<tr style="border-bottom:1px solid #F0E9DF">' +
-        '<td style="padding:8px 6px">' + m.ico + ' ' + escHtml(m.nom) + '</td>' +
-        '<td style="padding:8px 6px;text-align:right;font-weight:600;color:#4E7A52">' + fmx(m.act||0) + ' / ' + fmx(m.meta) + '</td>' +
-        '<td style="padding:8px 6px;text-align:right;color:#7D5F4E">' + pct + '%</td>' +
-        '</tr>';
-    }).join('');
-
-  var html =
-    '<div style="max-width:600px;margin:0 auto">' +
-      '<div style="text-align:center;margin-bottom:20px;border-bottom:3px solid #C4704F;padding-bottom:14px">' +
-        '<div style="font-size:22px;font-weight:800;color:#C4704F">¿A Dónde Se Fue?</div>' +
-        '<div style="font-size:14px;color:#6B4C3B;margin-top:2px">' + tituloPeriodo + '</div>' +
-        etiquetaEstado +
-      '</div>' +
-      '<table style="width:100%;border-collapse:collapse;margin-bottom:18px">' +
-        '<tr><td style="padding:6px 6px;color:#6B4C3B">Entró</td><td style="padding:6px 6px;text-align:right;font-weight:700">' + fmx(item.mto) + '</td></tr>' +
-        '<tr><td style="padding:6px 6px;color:#6B4C3B">Salió</td><td style="padding:6px 6px;text-align:right;font-weight:700">' + fmx(item.gasto) + '</td></tr>' +
-        '<tr style="border-top:2px solid #F0E9DF"><td style="padding:8px 6px;font-weight:700">' + (pos ? 'Te sobró' : 'Te pasaste') + '</td>' +
-        '<td style="padding:8px 6px;text-align:right;font-weight:800;color:' + (pos ? '#4E7A52' : '#D9534F') + '">' + fmx(Math.abs(item.dif)) + '</td></tr>' +
-      '</table>' +
-      '<div style="font-size:13px;font-weight:700;color:#6B4C3B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Desglose por sobre</div>' +
-      '<table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:13px">' +
-        (sobresHTML || '<tr><td style="padding:8px 6px;color:#7D5F4E">Sin gastos registrados</td></tr>') +
-      '</table>' +
-      (metasHTML
-        ? '<div style="font-size:13px;font-weight:700;color:#6B4C3B;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Mis metas</div>' +
-          '<table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:13px">' + metasHTML + '</table>'
-        : '') +
-      '<div style="text-align:center;font-size:11px;color:#7D5F4E;margin-top:24px;border-top:1px solid #F0E9DF;padding-top:12px">' +
-        'Racha: ' + (item.racha||0) + ' días 🔥 &nbsp;·&nbsp; Generado con ¿A Dónde Se Fue? 📱' +
-      '</div>' +
-    '</div>';
-
-  var area = document.getElementById('print-area');
-  if (!area) { toast('No se pudo preparar el PDF'); return; }
-  area.innerHTML = html;
-  toast('Abriendo el diálogo para guardar como PDF 📄');
-  setTimeout(function() { window.print(); }, 200);
+  var bytes = construirReportePDF(item);
+  var blob = new Blob([bytes], {type:'application/pdf'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = nombreArchivoPDF(item);
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 4000);
+  toast('PDF descargado 📄');
 }
 
 
@@ -6516,8 +6654,6 @@ function mostrarAnalisisInicial() {
   </div>
   <button class="bi-btn" onclick="cerrarInstall()">¡Entendido, voy a instalarla! 🌸</button>
 </div>
-
-<div id="print-area" class="print-only"></div>
 
 <script>
 if ('serviceWorker' in navigator) {

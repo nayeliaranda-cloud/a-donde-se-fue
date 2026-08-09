@@ -3,7 +3,19 @@
     "allow": [
       "Bash(node -e ' *)",
       "Bash(curl -s http://localhost:8934/index.html)",
-      "Bash(pkill -f \"http.server 8934\")"
+      "Bash(pkill -f \"http.server 8934\")",
+      "Bash(curl -sI https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js)",
+      "Bash(curl -s https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js -o /tmp/jspdf.umd.min.js)",
+      "Read(//tmp/**)",
+      "Bash(gzip -c /tmp/jspdf.umd.min.js)",
+      "Bash(python3 -c \"import pypdf\")",
+      "Bash(python3 -c \"import PyPDF2\")",
+      "Bash(python3 -c \"import fitz\")",
+      "Bash(python3 -c \"import pypdf; print\\(pypdf.__version__\\)\")",
+      "Bash(node test_pdf.js)",
+      "Bash(python3 -c ' *)",
+      "Bash(qpdf --check /tmp/reporte_test.pdf)",
+      "Bash(pkill -f \"http.server 8935\")"
     ]
   }
 }
