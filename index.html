@@ -183,11 +183,6 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 .sobre-add::before{content:'';display:block;width:100%;height:0;border-left:calc(50% + 1px) solid transparent;border-right:calc(50% + 1px) solid transparent;border-top:22px solid #F5E6D8;}
 .sobre-add:active{transform:scale(.95);}
 .sobre-add-inner{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:-2px;}
-/* acceso rápido */
-.rap-btn{background:#fff;border-radius:12px;padding:10px 6px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;box-shadow:0 2px 8px var(--shc);border:none;transition:transform var(--tr),background-color var(--tr);width:100%;}
-.rap-btn:active{transform:scale(.93);background:#FDF2EC;}
-.rap-ico{font-size:20px;}
-.rap-lbl{font-size:9px;font-weight:600;color:#6B4C3B;text-align:center;line-height:1.2;}
 .bar-w{margin-bottom:14px;}
 .bar-h{display:flex;justify-content:space-between;margin-bottom:5px;}
 .bar-l{font-size:12px;font-weight:500;color:#3D2B1F;}
@@ -873,9 +868,6 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     </div>
     <div class="sec-t">Mis Sobres</div>
     <div class="grid-s" id="grid-s"></div>
-    <!-- ACCESO RÁPIDO -->
-    <div class="sec-t">Registrar rápido</div>
-    <div id="acceso-rapido" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px"></div>
     <div class="sec-t">Metas Activas</div>
     <div id="metas-res"></div>
   </div>
@@ -1701,7 +1693,6 @@ function iniciarApp() {
   actualizarUI();
   renderSobres();
   renderMetasRes();
-  renderAccesoRapido();
   irA('p-ini');
   mostrarInstall();
   chkCumpleRetro();
@@ -1867,56 +1858,15 @@ function irMetaCumple(){
 // ════ SOBRES ══════════════════════════════════════
 function todosSobres() { return SOBRES.concat(E.custom || []); }
 
-function renderAccesoRapido() {
-  var cont = document.getElementById('acceso-rapido');
-  if (!cont) return;
-  // Sobres más usados — los 4 con más gastos este mes o los primeros 4
-  var todos = todosSobres().filter(function(s){ return !s.esMetas && !s.esAhorro && !s.esTanda && !s.esPr; });
-  var conGasto = todos.map(function(s){ return {s:s, g:calcGS(s.id)}; }).sort(function(a,b){return b.g-a.g;});
-  var top = conGasto.slice(0,4);
-  // Si hay menos de 4 con gasto, completar con los primeros del listado
-  if (top.length < 4) {
-    todos.forEach(function(s){
-      if (top.length >= 4) return;
-      if (!top.some(function(x){return x.s.id===s.id;})) top.push({s:s,g:0});
-    });
-  }
-  cont.innerHTML = top.map(function(it){
-    return '<button class="rap-btn" onclick="rapRegistrar(\''+escAttrJs(it.s.id)+'\',\''+escAttrJs(it.s.ico)+'\',\''+escAttrJs(it.s.cor)+'\')">' +
-      '<div class="rap-ico">'+it.s.ico+'</div>' +
-      '<div class="rap-lbl">'+escHtml(it.s.cor.split(' ')[0])+'</div>' +
-    '</button>';
-  }).join('');
-}
-
-function rapRegistrar(sobreId, ico, nom) {
-  E.sobreA = sobreId; E.subA = null;
-  dlg({e:ico, t:'Gasto rápido', s:'¿Cuánto gastaste en '+nom+'?',
-    inp:true, ph:'$ 0.00', md:'decimal',
-    btns:[
-      {l:'Registrar', c:'p', f:function(v){
-        var val=parseFloat(v); if(isNaN(val)||val<=0){toast('Ingresa un monto válido');return;}
-        if(!isPrem() && E.regs.length>=10){cerrarDlg();abrirPremium();return;}
-        var reg={id:Date.now(),sobre:sobreId,sub:null,mto:val,nota:nom,fecha:new Date().toISOString()};
-        E.regs.push(reg); contReg(); guardar(); actualizarUI(); renderSobres(); renderAccesoRapido();
-        toast('✅ '+fmx(val)+' en '+nom+' registrado');
-      }},
-      {l:'Cancelar',c:'s',f:cerrarDlg}
-    ]
-  });
-}
-
 // El hero de Inicio no es el "número grande + chips" genérico de cualquier
 // app de finanzas: debajo del disponible se ve un fan de mini-sobres reales
-// con su nivel de llenado real — la tesis del método de sobres, no un
-// stat-card de plantilla.
+// con su nivel de llenado real, ordenados de más a menos lleno — la tesis
+// del método de sobres, no un stat-card de plantilla.
 function renderHeroSobres() {
   var cont = document.getElementById('hero-sobres');
   if (!cont) return;
   // Ordenado por nivel de llenado (no por orden fijo del catálogo) para que
-  // cumpla su propósito real — mostrar qué sobres están más llenos — y no
-  // repita casi siempre los mismos íconos que "Registrar rápido" (que ordena
-  // por gasto absoluto).
+  // cumpla su propósito real: mostrar qué sobres están más llenos primero.
   var todos = todosSobres().filter(function(s) { return !s.esMetas && !s.esAhorro && !s.esTanda && !s.esPr; });
   var conDatos = todos.map(function(s) {
     var gasto = calcGS(s.id);
@@ -4005,7 +3955,7 @@ function confirmarCierre() {
     }
   }, 400);
 
-  actualizarUI(); renderSobres(); renderAccesoRapido();
+  actualizarUI(); renderSobres();
 }
 
 function dlgOpcionesEnvio(snapshot) {
