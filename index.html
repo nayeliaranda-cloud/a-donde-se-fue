@@ -171,6 +171,8 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 .s-nom{font-size:10px;font-weight:600;color:#3D2B1F;text-align:center;line-height:1.2;white-space:pre-line;}
 .s-mto{font-size:10px;color:#7D5F4E;position:relative;z-index:1;}
 .s-badge{position:absolute;top:26px;right:6px;width:7px;height:7px;border-radius:50%;background:#F2A07B;z-index:2;}
+.sobre-del{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(61,43,31,.55);color:#fff;font-size:11px;line-height:20px;text-align:center;z-index:3;cursor:pointer;}
+.sobre-del:active{background:rgba(61,43,31,.8);}
 /* Firma: el sobre se "llena" de abajo hacia arriba según % del límite
    gastado — la misma métrica que ya calcula limEfectivo()/calcGS(), solo
    visualizada como nivel en vez de barra. Tope visual en 78% de la altura
@@ -1900,6 +1902,7 @@ function renderSobres() {
     html += '<div class="sobre' + (alerta?' alerta':'') + (s.custom?' custom':'') + '" onclick="abrirSobre(\''+s.id+'\')">' +
       (lim > 0 ? '<div class="sobre-fill ' + claseNivel + '" data-h="' + alturaFill + '" style="height:0"></div>' : '') +
       (alerta ? '<div class="s-badge"></div>' : '') +
+      (s.custom ? '<div class="sobre-del" onclick="event.stopPropagation();dlgElimSobre(\''+escAttrJs(s.id)+'\')">🗑</div>' : '') +
       '<div class="sobre-ico-wrap">' +
         '<div class="s-ico">'+s.ico+'</div>' +
         '<div class="s-nom">'+escHtml(s.nom)+'</div>' +
@@ -2412,6 +2415,20 @@ function dlgNuevoSobre() {
         {l:'Cancelar',c:'s',f:null}
       ]
     });
+  });
+}
+
+function dlgElimSobre(id) {
+  var s = (E.custom||[]).filter(function(x){return x.id===id;})[0];
+  if (!s) return;
+  dlg({e:'🗑',t:'Eliminar sobre',s:'¿Eliminar "'+s.cor+'"? Se perderán sus categorías. No se puede deshacer.',
+    btns:[
+      {l:'Sí, eliminar',c:'d',f:function(){
+        E.custom = E.custom.filter(function(x){return x.id!==id;});
+        guardar(); renderSobres(); toast('Sobre "'+s.cor+'" eliminado');
+      }},
+      {l:'Cancelar',c:'s',f:null}
+    ]
   });
 }
 
