@@ -827,6 +827,11 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     <div id="bans-msi"></div>
     <div id="bans-tarjetas"></div>
     <div id="bans-srv"></div>
+    <div class="ban" style="background:linear-gradient(135deg,#6B8CAE,#4A6C8C);margin-bottom:12px" onclick="abrirAgenda()">
+      <div style="font-size:22px">📅</div>
+      <div style="flex:1"><div class="ban-tit">Mi agenda de pagos</div><div class="ban-sub" id="agenda-resumen">Servicios, tarjetas y MSI en un solo lugar</div></div>
+      <div style="font-size:15px;color:rgba(255,255,255,.8)">›</div>
+    </div>
     <!-- Banner saldo arrastrado -->
     <div id="ban-arrastre" style="display:none;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:12px;margin-bottom:12px">
       <div id="arr-ico" style="font-size:18px;flex-shrink:0">✅</div>
@@ -1064,6 +1069,21 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
   </div>
 </div>
 
+<!-- MODAL AGENDA DE PAGOS -->
+<div class="mo" id="mo-agenda">
+  <div class="mo-sh">
+    <div class="mo-hdl" id="hdl-ag"></div>
+    <div class="mo-hdr">
+      <div class="mo-ttw"><div class="mo-ico">📅</div><div class="mo-tit">Mi agenda de pagos</div></div>
+      <button class="mo-x" onclick="cerrarMo('mo-agenda')" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="mo-body">
+      <div style="font-size:12px;color:#7D5F4E;margin-bottom:14px;line-height:1.5">Todos tus próximos vencimientos — servicios, tarjetas y MSI — ordenados del más urgente al más lejano.</div>
+      <div id="agenda-cont"></div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL GALERÍA -->
 <div class="mo" id="mo-gal">
   <div class="mo-sh">
@@ -1276,7 +1296,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Cargar datos
   try { var g = localStorage.getItem('adsf4'); if (g) { var p = JSON.parse(g); for (var k in p) E[k] = p[k]; } } catch(e) {}
   // Init swipes
-  ['mo-s','mo-rinc','mo-gal'].forEach(function(id) { initSwipe(id); });
+  ['mo-s','mo-rinc','mo-gal','mo-agenda'].forEach(function(id) { initSwipe(id); });
   // Cerrar diálogo al tocar fuera de la caja
   var dlgEl = document.getElementById('dlg');
   if (dlgEl) dlgEl.addEventListener('click', function(e) { if (e.target === dlgEl) cerrarDlg(); });
@@ -1819,6 +1839,7 @@ function actualizarUI() {
   chkNuevoMes();
   renderBanTarjetas();
   renderBanMSI();
+  renderAgendaResumen();
   var ssinL = todosSobres().filter(function(s) { return !s.esMetas && !s.esAhorro && !s.esTanda && !s.esPr && !E.lims[s.id]; });
   var bc = document.getElementById('ban-cfg');
   if (bc) bc.style.display = ssinL.length > 0 ? 'flex' : 'none';
@@ -2285,6 +2306,57 @@ function renderBanSrv() {
       '<div style="flex:1"><div class="ban-tit">'+(emo[col]||'🟢')+' '+escHtml(s.nom)+' — '+dtxt+'</div>' +
       '<div class="ban-sub">Toca para ver detalle y marcar como pagado</div></div>' +
       '<div style="font-size:14px;color:rgba(255,255,255,.8)">›</div>' +
+      '</div>';
+  }).join('');
+}
+
+// ── AGENDA DE PAGOS: junta servicios + tarjetas + MSI ──
+function getAgendaItems() {
+  var items = [];
+  (E.servicios||[]).forEach(function(s) {
+    items.push({ico:s.ico,nom:s.nom,dias:diasVence(s),mto:s.mto,tipo:'Servicio',fn:"cerrarMo('mo-agenda');abrirSobre('casa')"});
+  });
+  getTarjetas().forEach(function(t) {
+    if (t.diaPago) items.push({ico:t.ico||'💳',nom:t.nom,dias:calcDiasHasta(t.diaPago),mto:t.saldo,tipo:'Tarjeta',fn:"cerrarMo('mo-agenda');abrirSobre('deudas')"});
+  });
+  getMSI().forEach(function(m) {
+    if (m.diaPago && (m.mesesPagados||0) < m.meses) items.push({ico:'📅',nom:m.nom,dias:calcDiasHasta(m.diaPago),mto:m.pagoMensual,tipo:'MSI',fn:"cerrarMo('mo-agenda');abrirSobre('deudas')"});
+  });
+  items.sort(function(a,b) { return a.dias - b.dias; });
+  return items;
+}
+function renderAgendaResumen() {
+  var el = document.getElementById('agenda-resumen'); if (!el) return;
+  var items = getAgendaItems();
+  if (!items.length) { el.textContent = 'Aún no tienes pagos programados'; return; }
+  var urgentes = items.filter(function(i){ return i.dias <= 5; });
+  el.textContent = urgentes.length
+    ? urgentes.length + ' pago' + (urgentes.length!==1?'s':'') + ' urgente' + (urgentes.length!==1?'s':'') + ' esta semana'
+    : items.length + ' pago' + (items.length!==1?'s':'') + ' programado' + (items.length!==1?'s':'') + ' este mes';
+}
+function abrirAgenda() {
+  renderAgenda();
+  document.getElementById('mo-agenda').classList.add('on');
+}
+function renderAgenda() {
+  var cont = document.getElementById('agenda-cont'); if (!cont) return;
+  var items = getAgendaItems();
+  if (!items.length) {
+    cont.innerHTML = '<div style="text-align:center;padding:26px 14px">' +
+      '<div style="font-size:40px;margin-bottom:10px">📅</div>' +
+      '<div style="font-size:14px;font-weight:600;color:#3D2B1F;margin-bottom:6px">Sin pagos programados</div>' +
+      '<div style="font-size:12px;color:#7D5F4E;line-height:1.5">Agrega tus servicios (luz, agua, internet…) desde Casa & Servicios, o el día de pago de tus tarjetas, para que la app te avise antes de que venzan.</div>' +
+      '</div>';
+    return;
+  }
+  var emo = {'v':'🟢','a':'🟡','r':'🔴'};
+  cont.innerHTML = items.map(function(it) {
+    var col = colorSrv(it.dias);
+    var dtxt = it.dias===0 ? '¡HOY VENCE!' : it.dias===1 ? 'Vence mañana' : 'Vence en ' + it.dias + ' días';
+    return '<div class="sub-s" onclick="'+it.fn+'">' +
+      '<div class="ss-ico">'+it.ico+'</div>' +
+      '<div class="ss-inf"><div class="ss-nom">'+escHtml(it.nom)+'</div><div class="ss-ej">'+it.tipo+(it.mto?' · '+fmx(it.mto):'')+'</div></div>' +
+      '<div style="text-align:right;font-size:12px;font-weight:700;white-space:nowrap">'+(emo[col]||'⚪')+' '+dtxt+'</div>' +
       '</div>';
   }).join('');
 }
@@ -6336,7 +6408,7 @@ function nuevoReto(){
 // ══════════════════════════════════════════════════
 // ── DIAGNÓSTICO ───────────────────────────────────
 // ══════════════════════════════════════════════════
-var PREGUNTAS=[{ctx:'Empecemos por lo básico…',p:'¿Sabes exactamente cuánto dinero entra a tu casa cada mes?',pilar:'control'},{ctx:'Sin juzgar, para saber…',p:'¿Llevas registro de en qué se va tu dinero?',pilar:'control'},{ctx:'No el que tienes en la cabeza, el que funciona…',p:'¿Tienes un presupuesto mensual que sí sigues?',pilar:'control'},{ctx:'Antes de sacar la cartera…',p:'¿Comparas precios antes de hacer compras grandes (súper, tienda, en línea)?',pilar:'control'},{ctx:'Ese dinero que nadie toca salvo un imprevisto…',p:'¿Tienes un fondo para emergencias?',pilar:'shock'},{ctx:'Tarjetas, préstamos, todo junto…',p:'¿Sabes exactamente cuánto debes en total?',pilar:'flexibilidad'},{ctx:'Esta es la pregunta que más dinero te puede ahorrar…',p:'¿Pagas más del mínimo en tus tarjetas de crédito?',pilar:'flexibilidad'},{ctx:'Esto dice mucho de tu salud financiera…',p:'¿Has pagado a tiempo todas tus deudas en los últimos 3 meses?',pilar:'flexibilidad'},{ctx:'Aunque sea pequeño, cuenta…',p:'¿Tienes algún ahorro o inversión activa?',pilar:'metas'},{ctx:'Para proteger lo que has construido…',p:'¿Tienes seguro de gastos médicos o de vida?',pilar:'proteccion'},{ctx:'Para tu yo del futuro…',p:'¿Sabes en qué Afore está tu dinero y cuánto llevas acumulado para el retiro?',pilar:'proteccion'}];
+var PREGUNTAS=[{ctx:'Empecemos por lo básico…',p:'¿Sabes exactamente cuánto dinero entra a tu casa cada mes?',pilar:'control'},{ctx:'La pregunta que separa deuda de tranquilidad…',p:'¿Gastas menos de lo que ganas la mayoría de los meses?',pilar:'control'},{ctx:'Sin juzgar, para saber…',p:'¿Llevas registro de en qué se va tu dinero?',pilar:'control'},{ctx:'No el que tienes en la cabeza, el que funciona…',p:'¿Tienes un presupuesto mensual que sí sigues?',pilar:'control'},{ctx:'Antes de sacar la cartera…',p:'¿Comparas precios antes de hacer compras grandes (súper, tienda, en línea)?',pilar:'control'},{ctx:'Ese dinero que nadie toca salvo un imprevisto…',p:'¿Tienes un fondo para emergencias?',pilar:'shock'},{ctx:'Tarjetas, préstamos, todo junto…',p:'¿Sabes exactamente cuánto debes en total?',pilar:'flexibilidad'},{ctx:'Tu historial también cuenta…',p:'¿Sabes cuál es tu score en el Buró de Crédito?',pilar:'flexibilidad'},{ctx:'Esta es la pregunta que más dinero te puede ahorrar…',p:'¿Pagas más del mínimo en tus tarjetas de crédito?',pilar:'flexibilidad'},{ctx:'Esto dice mucho de tu salud financiera…',p:'¿Has pagado a tiempo todas tus deudas en los últimos 3 meses?',pilar:'flexibilidad'},{ctx:'Aunque sea pequeño, cuenta…',p:'¿Tienes algún ahorro o inversión activa?',pilar:'metas'},{ctx:'El truco de quienes sí logran ahorrar…',p:'¿Tienes una parte de tu dinero que se aparta sola cada mes (domiciliación, transferencia automática, etc.)?',pilar:'metas'},{ctx:'Para proteger lo que has construido…',p:'¿Tienes seguro de gastos médicos o de vida?',pilar:'proteccion'},{ctx:'Para tu yo del futuro…',p:'¿Sabes en qué Afore está tu dinero y cuánto llevas acumulado para el retiro?',pilar:'proteccion'},{ctx:'Antes de ver tus resultados…',p:'¿Sientes que tú tienes el control de tu dinero, y no al revés?',pilar:'bienestar'}];
 var OPTS_D=[{ico:'✅',txt:'Sí, claro que sí',pts:2},{ico:'🔄',txt:'Más o menos, estoy en ello',pts:1},{ico:'❌',txt:'Honestamente, no',pts:0}];
 var diagIdx=0,diagResp=[],diagDesdeOnboarding=false;
 function iniciarDiagnostico(){
@@ -6364,7 +6436,7 @@ function responderDiag(oi){diagResp.push({pilar:PREGUNTAS[diagIdx].pilar,pts:OPT
 function renderResultadoDiag(){
   var cont=document.getElementById('diag-cont');
   var total=diagResp.reduce(function(s,r){return s+r.pts;},0);var max=PREGUNTAS.length*2;
-  var pilares={control:{pts:0,max:8},shock:{pts:0,max:2},flexibilidad:{pts:0,max:6},metas:{pts:0,max:2},proteccion:{pts:0,max:4}};
+  var pilares={control:{pts:0,max:10},shock:{pts:0,max:2},flexibilidad:{pts:0,max:8},metas:{pts:0,max:4},proteccion:{pts:0,max:4},bienestar:{pts:0,max:2}};
   diagResp.forEach(function(r){if(pilares[r.pilar])pilares[r.pilar].pts+=r.pts;});
   var niv,ico,msg;
   var pctTotal = max>0 ? total/max : 0;
@@ -6376,7 +6448,7 @@ function renderResultadoDiag(){
   if(!E.histDiag)E.histDiag=[];
   E.histDiag.push({pts:total,fecha:E.diagnostico.fecha,niv:niv});
   guardar();verificarInsignias();
-  var pNoms={control:'Control',shock:'Resiliencia',flexibilidad:'Flexibilidad',metas:'Metas',proteccion:'Protección'};
+  var pNoms={control:'Control',shock:'Resiliencia',flexibilidad:'Flexibilidad',metas:'Metas',proteccion:'Protección',bienestar:'Bienestar'};
   // Banco de acciones posibles por pilar — graduadas en 3 niveles: MUY bajo
   // (0-33%), REGULAR (34-66%) y SANA (67-100%, mantenimiento/siguiente nivel).
   var ACCIONES_PILAR={
@@ -6404,6 +6476,11 @@ function renderResultadoDiag(){
       bajo:{txt:'Revisa opciones de seguro médico básico esta semana',fn:"abrirRecurso('https://www.condusef.gob.mx')"},
       medio:{txt:'Compara coberturas de tu seguro actual vs otras opciones',fn:"abrirRecurso('https://www.condusef.gob.mx')"},
       alto:{txt:'Ya tienes protección — revisa tu póliza una vez al año para asegurarte que la cobertura siga siendo suficiente',fn:"abrirRecurso('https://www.condusef.gob.mx')"}
+    },
+    bienestar:{
+      bajo:{txt:'Anota hoy 3 cosas del dinero que te quitan el sueño — nombrarlas es el primer paso para soltarlas',fn:"irA('p-ini')"},
+      medio:{txt:'Dedica 10 minutos esta semana a revisar tus Reportes sin juzgarte, solo para saber en qué punto estás',fn:"irA('p-rep');renderReportes()"},
+      alto:{txt:'Ya sientes control sobre tu dinero — comparte lo que has aprendido con alguien más, enseñar refuerza el hábito',fn:"irA('p-ini')"}
     }
   };
   // Ordenar pilares de más débil a más fuerte (por %) y filtrar solo los que necesitan atención (<67%)
