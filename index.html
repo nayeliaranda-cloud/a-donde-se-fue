@@ -740,7 +740,23 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 .bi-btn{width:100%;padding:10px;background:#C4704F;color:#fff;border:none;border-radius:10px;
   font-size:13px;font-weight:600;cursor:pointer;font-family:var(--fb);}
 </style>
-</head>
+  <!-- Sentry Error Tracking -->
+  <script src="https://browser.sentry-cdn.com/7.91.0/bundle.min.js"></script>
+  <script>
+    Sentry.init({
+      dsn: "https://e04667b00bc4e3bcf7749b46b60616d5@o4512103369736192.ingest.us.sentry.io/4512103397195776",
+      environment: "production",
+      tracesSampleRate: 0.1,
+      integrations: [
+        new Sentry.Replay({
+          maskAllText: true,
+          blockAllMedia: true,
+        }),
+      ],
+      replaysSessionSampleRate: 0.1,
+      replaysOnErrorSampleRate: 1.0,
+    });
+  </script></head>
 <body>
 
 <!-- WIZARD -->
@@ -935,8 +951,14 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 <div id="p-prf" class="pant">
   <div class="pf-hdr">
     <div class="pf-av" id="pf-av">👤</div>
-    <div class="pf-n" id="pf-n">…</div>
-    <div class="pf-c" id="pf-c"></div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+      <div class="pf-n" id="pf-n">…</div>
+      <button onclick="dlgEditarNombre()" aria-label="Editar nombre" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:22px;height:22px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:11px;cursor:pointer;padding:0">✏️</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:3px">
+      <div class="pf-c" id="pf-c" style="margin-top:0"></div>
+      <button onclick="dlgEditarCumple()" aria-label="Editar cumpleaños" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:18px;height:18px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:9px;cursor:pointer;padding:0">✏️</button>
+    </div>
     <div class="pf-pl" id="pf-pl">✨ Plan Gratuito</div>
     <button onclick="dlgEditarPerfil()" style="display:block;margin:12px auto 0;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:99px;padding:6px 16px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--fb)">✏️ Editar perfil</button>
   </div>
@@ -3183,6 +3205,46 @@ function dlgEditMonto() {
       {l:'Guardar',c:'p',f:function(v){
         var val=parseFloat(v);if(isNaN(val)||val<=0){toast('Ingresa un monto válido');return;}
         E.perfil.mto=val;guardar();actualizarUI();renderPerfil();toast('¡Monto actualizado! 💰');
+      }},
+      {l:'Cancelar',c:'s',f:null}
+    ]
+  });
+}
+
+function dlgEditarNombre() {
+  var p=E.perfil;
+  dlg({e:'✏️',t:'Editar mi nombre',s:'¿Cómo te llamas?',inp:true,ph:'Tu nombre o apodo',md:'text',val:p.nom||'',
+    btns:[
+      {l:'Guardar',c:'p',f:function(v){
+        if(!v.trim()){toast('Escribe un nombre');return;}
+        p.nom=v.trim();
+        guardar();renderPerfil();toast('Nombre actualizado ✓');
+      }},
+      {l:'Cancelar',c:'s',f:null}
+    ]
+  });
+}
+
+function dlgEditarCumple() {
+  var p=E.perfil;
+  dlg({e:'🎂',t:'¿Qué día es tu cumpleaños?',s:'Del 1 al 31 — déjalo vacío si prefieres omitirlo',inp:true,ph:'Día',md:'decimal',val:p.dia||'',
+    btns:[
+      {l:'Siguiente →',c:'p',f:function(vd){
+        var dia=vd.trim();
+        if(dia!==''){var dn=parseInt(dia);if(isNaN(dn)||dn<1||dn>31){toast('Día del 1 al 31');return;}}
+        dlg({e:'🎂',t:'¿Y el mes?',s:'Del 1 (enero) al 12 (diciembre)',inp:true,ph:'Mes',md:'decimal',val:p.mes||'',
+          btns:[
+            {l:'✅ Guardar',c:'p',f:function(vm){
+              var mes=vm.trim();
+              if(mes!==''){var mn=parseInt(mes);if(isNaN(mn)||mn<1||mn>12){toast('Mes del 1 al 12');return;}}
+              if((dia!==''&&mes==='')||(dia===''&&mes!=='')){toast('Completa día y mes, o deja ambos vacíos');return;}
+              p.dia=dia;p.mes=mes;
+              crearMetaCumpleSiAplica();
+              guardar();renderPerfil();toast('Cumpleaños actualizado ✓');
+            }},
+            {l:'Cancelar',c:'s',f:null}
+          ]
+        });
       }},
       {l:'Cancelar',c:'s',f:null}
     ]
