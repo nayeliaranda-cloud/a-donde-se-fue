@@ -5055,6 +5055,7 @@ function buildTarjetaBody(t, i) {
 }
 
 // ── CÁLCULO MÍNIMO VS TOTAL ───────────────────────
+// ── CÁLCULO MÍNIMO VS TOTAL (MEJORADO) ───────────────────────
 function calcMinimoVsTotal(saldo, tasa, pagoMensual) {
   var tasaMensual = tasa / 100 / 12;
   var bal = saldo;
@@ -5062,24 +5063,51 @@ function calcMinimoVsTotal(saldo, tasa, pagoMensual) {
   var totalPagadoMin = 0;
   var pagoMin = pagoMensual;
 
+  // ⚠️ VALIDACIÓN: ¿Es posible pagar?
+  var interesInicial = saldo * tasaMensual;
+  if (pagoMensual > 0 && pagoMensual < interesInicial) {
+    // El pago es menor que el interés del primer mes
+    return {
+      mesesMin: -1,
+      totalMin: 0,
+      interesesMin: 0,
+      aniosMin: "Imposible",
+      error: true,
+      errorMsg: "El pago de $" + Math.round(pagoMensual) + "/mes es insuficiente. Los intereses de ese mes serían $" + Math.round(interesInicial) + "."
+    };
+  }
+
   // Calcular con pago mínimo (1.5% del saldo, mínimo $200)
   var balMin = saldo;
   while (balMin > 0 && mesesMin < 600) {
     var interes = balMin * tasaMensual;
-    var min = Math.max(200, balMin * 0.015);
+    var min = pagoMensual;  // ✅ FIX: Usar el parámetro que se pasó
     if (min > balMin + interes) min = balMin + interes;
     totalPagadoMin += min;
     balMin = balMin + interes - min;
     if (balMin < 1) balMin = 0;
     mesesMin++;
   }
+  
+  // ⚠️ Alerta si alcanzó el máximo de 600 meses
+  if (mesesMin >= 600) {
+    return {
+      mesesMin: 600,
+      totalMin: totalPagadoMin,
+      interesesMin: totalPagadoMin - saldo,
+      aniosMin: "50 años",
+      error: true,
+      errorMsg: "Con este pago, tardarías más de 50 años (600 meses) en pagar la deuda. Considera aumentar el pago."
+    };
+  }
+
   var interesesMin = totalPagadoMin - saldo;
   var aniosMin = mesesMin >= 12
     ? Math.floor(mesesMin/12) + ' año' + (Math.floor(mesesMin/12)!==1?'s':'') +
       (mesesMin%12>0?' y '+mesesMin%12+' mes'+(mesesMin%12!==1?'es':''):'')
     : mesesMin + ' meses';
 
-  return {mesesMin, totalMin: totalPagadoMin, interesesMin, aniosMin};
+  return {mesesMin, totalMin: totalPagadoMin, interesesMin, aniosMin, error: false};
 }
 
 function buildSimRes(saldo, tasa, pago, resultMin) {
@@ -5088,6 +5116,14 @@ function buildSimRes(saldo, tasa, pago, resultMin) {
   var bal = saldo;
   var meses = 0;
   var totalPagado = 0;
+  var interesInicial = saldo * tasaMensual;
+
+  // ⚠️ VALIDACIÓN: ¿Es posible pagar?
+  if (pago < interesInicial) {
+    return '<div style="background:#FFF5F0;border-radius:8px;padding:10px 12px;border-left:4px solid #D9534F;font-size:12px;color:#9E5538;line-height:1.5"><div style="font-weight:700;margin-bottom:4px">⚠️ Pago insuficiente</div><div>El interés de este mes es $' + Math.round(interesInicial) + '.</div><div>Tu pago ($' + Math.round(pago) + ') no lo cubre.</div><div style="margin-top:4px;font-size:11px">👉 La deuda crecerá cada mes. Aumenta tu pago.</div></div>';
+  }
+
+  // Calcular normalmente
   while (bal > 0 && meses < 600) {
     var interes = bal * tasaMensual;
     var p = Math.min(pago, bal + interes);
@@ -5096,8 +5132,14 @@ function buildSimRes(saldo, tasa, pago, resultMin) {
     if (bal < 1) bal = 0;
     meses++;
   }
+
+  // ⚠️ Alerta si alcanzó 600 meses
+  if (meses >= 600) {
+    return '<div style="background:#FFF5F0;border-radius:8px;padding:10px 12px;border-left:4px solid #D9534F;font-size:12px;color:#9E5538;line-height:1.5"><div style="font-weight:700;margin-bottom:4px">⚠️ Plazo muy largo</div><div>Tardarías más de 50 años (600 meses) en pagar.</div><div style="margin-top:4px;font-size:11px">👉 Aumenta tu pago mensual para reducir plazos.</div></div>';
+  }
+
   var intereses = totalPagado - saldo;
-  var ahorro = (resultMin ? resultMin.interesesMin - intereses : 0);
+  var ahorro = (resultMin && !resultMin.error ? resultMin.interesesMin - intereses : 0);
   var mesesTxt = meses >= 12
     ? Math.floor(meses/12) + ' año' + (Math.floor(meses/12)!==1?'s':'') +
       (meses%12>0?' y '+meses%12+' mes'+(meses%12!==1?'es':''):'')
