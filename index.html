@@ -2086,10 +2086,10 @@ function renderSubSobres(cont, s, id) {
 
 function renderCasa(cont, s) {
   var srvs = E.servicios || [];
-  var activos = srvs.map(function(x) { return Object.assign({}, x, {dias: diasVence(x)}); })
+  var activos = srvs.map(function(x, j) { return Object.assign({}, x, {dias: diasVence(x), idx: j}); })
     .filter(function(x) { return x.dias <= 10; })
     .sort(function(a,b) { return a.dias - b.dias; });
-  var lejanos = srvs.map(function(x) { return Object.assign({}, x, {dias: diasVence(x)}); })
+  var lejanos = srvs.map(function(x, j) { return Object.assign({}, x, {dias: diasVence(x), idx: j}); })
     .filter(function(x) { return x.dias > 10; })
     .sort(function(a,b) { return a.dias - b.dias; });
   var html = '<div class="sec-t" style="margin-top:0">📅 Mis Pagos Programados</div>';
@@ -2101,12 +2101,17 @@ function renderCasa(cont, s) {
       '</div>';
   } else {
     activos.forEach(function(s, i) {
-      var col = colorSrv(s.dias);
-      var dtxt = s.dias===0?'¡HOY VENCE!':s.dias===1?'Vence mañana':'Vence en '+s.dias+' días';
+      var pagado = pagadoEstePeriodo(s);
+      var col = pagado ? 'v' : colorSrv(s.dias);
+      var dtxt = pagado ? 'Al corriente' : s.dias===0?'¡HOY VENCE!':s.dias===1?'Vence mañana':'Vence en '+s.dias+' días';
       html += '<div class="srv '+col+'">'+
         '<div class="srv-ico">'+s.ico+'</div>'+
         '<div style="flex:1"><div class="srv-n">'+escHtml(s.nom)+'</div><div class="srv-d">Día '+s.dia+' · '+(PERIODOS[s.per]?PERIODOS[s.per].lb:s.per)+(s.mto?' · '+fmx(s.mto):'')+'</div>'+
-        '<button class="btn-marc c" style="margin-top:4px" onclick="marcarPagado('+i+')">✓ Ya pagué</button></div>'+
+        (pagado
+          ? '<div style="margin-top:4px;font-size:11px;font-weight:600;color:#4E7A52">\u2713 Pagado'+
+            (puedeDeshacerPago(s) ? ' <button class="btn-marc pg" style="margin-top:0;margin-left:4px" onclick="desmarcarPagado('+s.idx+')">\u21A9 Deshacer</button>' : '')+
+            '</div></div>'
+          : '<button class="btn-marc c" style="margin-top:4px" onclick="marcarPagado('+s.idx+')">✓ Ya pagué</button></div>')+
         '<div class="srv-bdg '+col+'">'+dtxt+'</div>'+
         '</div>';
     });
@@ -2114,7 +2119,13 @@ function renderCasa(cont, s) {
       lejanos.forEach(function(s) {
         html += '<div class="srv-lejano"><div style="font-size:18px">'+s.ico+'</div>'+
           '<div style="flex:1;font-size:12px;color:#3D2B1F">'+escHtml(s.nom)+'</div>'+
-          '<div style="font-size:11px;color:#7D5F4E">Día '+s.dia+' · en '+s.dias+' días</div></div>';
+          '<div style="font-size:11px;color:#7D5F4E">Día '+s.dia+' · en '+s.dias+' días'+
+          (pagadoEstePeriodo(s)
+            ? '<div style="font-size:11px;font-weight:600;color:#4E7A52;text-align:right">\u2713 Al corriente'+
+              (puedeDeshacerPago(s) ? ' <button class="btn-marc pg" style="margin-top:2px;margin-left:4px" onclick="desmarcarPagado('+s.idx+')">\u21A9 Deshacer</button>' : '')+
+              '</div>'
+            : '')+
+          '</div></div>';
       });
     }
   }
@@ -2289,8 +2300,9 @@ function contReg() {
 }
 
 // ════ SERVICIOS ═══════════════════════════════════
-function diasVence(srv) {
-  var hoy = new Date();
+// Próximo vencimiento del servicio (Date). Lo usan diasVence() y
+// fechaVencActual() para que siempre apunten a la misma fecha.
+function fechaVenc(srv, hoy) {
   var dia = parseInt(srv.dia) || 1;
   var mes = hoy.getMonth();
   var anio = hoy.getFullYear();
@@ -2299,7 +2311,30 @@ function diasVence(srv) {
     var mper = (PERIODOS[srv.per] ? PERIODOS[srv.per].m : 1);
     fv = new Date(anio, mes + mper, dia);
   }
-  return Math.max(0, Math.ceil((fv - hoy) / 864e5));
+  return fv;
+}
+
+function diasVence(srv) {
+  var hoy = new Date();
+  return Math.max(0, Math.ceil((fechaVenc(srv, hoy) - hoy) / 864e5));
+}
+
+// Vencimiento al que apunta diasVence() hoy, como 'YYYY-MM-DD'.
+function fechaVencActual(srv) {
+  var fv = fechaVenc(srv, new Date());
+  return fv.getFullYear()+'-'+('0'+(fv.getMonth()+1)).slice(-2)+'-'+('0'+fv.getDate()).slice(-2);
+}
+
+// ¿El pago marcado cubre el vencimiento actual? Cuando pasa esa fecha,
+// diasVence() apunta al siguiente y esto vuelve a false. Pagos marcados
+// antes de guardar vencCubierto → false (comportamiento de siempre).
+function pagadoEstePeriodo(srv) {
+  return !!srv.vencCubierto && srv.vencCubierto === fechaVencActual(srv);
+}
+
+// Solo pagos de este periodo marcados con la versión que guarda los datos de deshacer.
+function puedeDeshacerPago(srv) {
+  return pagadoEstePeriodo(srv) && (srv.regIdPago !== undefined || srv.pagoPrevio !== undefined);
 }
 
 function colorSrv(dias) {
@@ -2314,7 +2349,7 @@ function renderBanSrv() {
   if (!cont) return;
   var srvs = E.servicios || [];
   var prox = srvs.map(function(s) { return Object.assign({},s,{dias:diasVence(s)}); })
-    .filter(function(s){ return s.dias <= 10; })
+    .filter(function(s){ return s.dias <= 10 && !pagadoEstePeriodo(s); })
     .sort(function(a,b){ return a.dias-b.dias; })
     .slice(0,2);
   if (!prox.length) { cont.innerHTML = ''; return; }
@@ -2336,7 +2371,7 @@ function renderBanSrv() {
 function getAgendaItems() {
   var items = [];
   (E.servicios||[]).forEach(function(s) {
-    items.push({ico:s.ico,nom:s.nom,dias:diasVence(s),mto:s.mto,tipo:'Servicio',fn:"cerrarMo('mo-agenda');abrirSobre('casa')"});
+    items.push({ico:s.ico,nom:s.nom,dias:diasVence(s),mto:s.mto,tipo:'Servicio',pagado:pagadoEstePeriodo(s),fn:"cerrarMo('mo-agenda');abrirSobre('casa')"});
   });
   getTarjetas().forEach(function(t) {
     if (t.diaPago) items.push({ico:t.ico||'💳',nom:t.nom,dias:calcDiasHasta(t.diaPago),mto:t.saldo,tipo:'Tarjeta',fn:"cerrarMo('mo-agenda');abrirSobre('deudas')"});
@@ -2344,14 +2379,15 @@ function getAgendaItems() {
   getMSI().forEach(function(m) {
     if (m.diaPago && (m.mesesPagados||0) < m.meses) items.push({ico:'📅',nom:m.nom,dias:calcDiasHasta(m.diaPago),mto:m.pagoMensual,tipo:'MSI',fn:"cerrarMo('mo-agenda');abrirSobre('deudas')"});
   });
-  items.sort(function(a,b) { return a.dias - b.dias; });
+  // Los servicios ya pagados este periodo van al final
+  items.sort(function(a,b) { return ((a.pagado?1:0) - (b.pagado?1:0)) || (a.dias - b.dias); });
   return items;
 }
 function renderAgendaResumen() {
   var el = document.getElementById('agenda-resumen'); if (!el) return;
   var items = getAgendaItems();
   if (!items.length) { el.textContent = 'Aún no tienes pagos programados'; return; }
-  var urgentes = items.filter(function(i){ return i.dias <= 5; });
+  var urgentes = items.filter(function(i){ return i.dias <= 5 && !i.pagado; });
   el.textContent = urgentes.length
     ? urgentes.length + ' pago' + (urgentes.length!==1?'s':'') + ' urgente' + (urgentes.length!==1?'s':'') + ' esta semana'
     : items.length + ' pago' + (items.length!==1?'s':'') + ' programado' + (items.length!==1?'s':'') + ' este mes';
@@ -2373,8 +2409,8 @@ function renderAgenda() {
   }
   var emo = {'v':'🟢','a':'🟡','r':'🔴'};
   cont.innerHTML = items.map(function(it) {
-    var col = colorSrv(it.dias);
-    var dtxt = it.dias===0 ? '¡HOY VENCE!' : it.dias===1 ? 'Vence mañana' : 'Vence en ' + it.dias + ' días';
+    var col = it.pagado ? 'v' : colorSrv(it.dias);
+    var dtxt = it.pagado ? 'Al corriente' : it.dias===0 ? '¡HOY VENCE!' : it.dias===1 ? 'Vence mañana' : 'Vence en ' + it.dias + ' días';
     return '<div class="sub-s" onclick="'+it.fn+'">' +
       '<div class="ss-ico">'+it.ico+'</div>' +
       '<div class="ss-inf"><div class="ss-nom">'+escHtml(it.nom)+'</div><div class="ss-ej">'+it.tipo+(it.mto?' · '+fmx(it.mto):'')+'</div></div>' +
@@ -2469,6 +2505,7 @@ function marcarPagado(idx) {
     btns:[
       {l:'Sí, ya pagué ✓',c:'p',f:function(){
         if (s.mto > 0 && !isPrem() && E.regs.length>=10) { cerrarDlg(); abrirPremium(); return; }
+        var regId = null;
         if (s.mto > 0) {
           // Mapear servicio a su subcategoría correcta
           var subSrv = 'luz';
@@ -2481,11 +2518,41 @@ function marcarPagado(idx) {
           else if(nomL.match(/mantenimiento|plomero|electricista/)) subSrv = 'mantto';
           else if(nomL.match(/seguro|tenencia/)) subSrv = 'limpieza';
           else if(nomL.match(/colegio|escuela|cuota/)) subSrv = 'renta';
-          E.regs.push({id:Date.now(),sobre:'casa',sub:subSrv,mto:s.mto,nota:s.nom+' — pago programado',fecha:new Date().toISOString()});
+          regId = Date.now();
+          E.regs.push({id:regId,sobre:'casa',sub:subSrv,mto:s.mto,nota:s.nom+' — pago programado',fecha:new Date().toISOString()});
         }
+        // Datos para poder deshacer (ver desmarcarPagado)
+        E.servicios[idx].pagoPrevio = E.servicios[idx].ultimoPago || null;
+        E.servicios[idx].regIdPago = regId;
+        E.servicios[idx].vencCubierto = fechaVencActual(s);
         E.servicios[idx].ultimoPago = new Date().toISOString();
         guardar(); actualizarUI(); abrirSobre('casa');
         toast('¡'+s.nom+' pagado!'+(s.mto>0?' '+fmx(s.mto)+' registrado':'')+' ✓');
+      }},
+      {l:'Cancelar',c:'s',f:null}
+    ]
+  });
+}
+
+function desmarcarPagado(idx) {
+  var s = (E.servicios||[])[idx];
+  if (!s) return;
+  var reg = null;
+  if (s.regIdPago !== null && s.regIdPago !== undefined) {
+    for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === s.regIdPago) { reg = E.regs[i]; break; } }
+  }
+  dlg({e:'\u21A9\uFE0F',t:'¿Deshacer pago?',
+    inf:s.ico+' '+s.nom+(reg?'\nSe eliminará el registro de '+fmx(reg.mto):''),
+    btns:[
+      {l:'Sí, deshacer',c:'p',f:function(){
+        if (reg) E.regs = E.regs.filter(function(r){ return r.id !== s.regIdPago; });
+        if (s.pagoPrevio) s.ultimoPago = s.pagoPrevio;
+        else delete s.ultimoPago;
+        delete s.pagoPrevio;
+        delete s.regIdPago;
+        delete s.vencCubierto;
+        guardar(); actualizarUI(); abrirSobre('casa');
+        toast('Pago de '+s.nom+' deshecho');
       }},
       {l:'Cancelar',c:'s',f:null}
     ]
