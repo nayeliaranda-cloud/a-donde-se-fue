@@ -1,7 +1,7 @@
 // Service Worker para "¿A Dónde Se Fue?"
 // Cachea el app shell para que funcione offline después de la primera carga
 
-const CACHE_NAME = 'adsf-v3';
+const CACHE_NAME = 'adsf-v4';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
