@@ -743,7 +743,8 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
   <!-- Sentry Error Tracking -->
   <script src="https://browser.sentry-cdn.com/7.91.0/bundle.min.js"></script>
   <script>
-    Sentry.init({
+    // Si el script de Sentry no cargó (sin internet o bloqueador), la app sigue sin error.
+    if (window.Sentry) Sentry.init({
       dsn: "https://e04667b00bc4e3bcf7749b46b60616d5@o4512103369736192.ingest.us.sentry.io/4512103397195776",
       environment: "production",
       tracesSampleRate: 0.1,
@@ -823,7 +824,8 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 <div id="p-ini" class="pant">
   <div class="hdr">
     <div class="hdr-top">
-      <div><div class="hdr-sal" id="h-sal">Buenos días</div><div class="hdr-nom" id="h-nom">🌿</div></div>
+      <div><div class="hdr-sal" id="h-sal">Buenos días</div><div class="hdr-nom" id="h-nom">🌿</div>
+        <div id="chip-consulta" role="button" onclick="avisoModoConsulta()" style="display:none;margin-top:8px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:3px 10px;font-size:11px;font-weight:600;color:#fff;cursor:pointer;align-items:center;gap:4px">&#x1F512; Modo consulta</div></div>
       <div class="hdr-av" id="h-av" onclick="irA('p-prf')">👤</div>
     </div>
     <div class="card-disp">
@@ -959,7 +961,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div class="pf-c" id="pf-c" style="margin-top:0"></div>
       <button onclick="dlgEditarCumple()" aria-label="Editar cumpleaños" style="background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:50%;width:18px;height:18px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:9px;cursor:pointer;padding:0">✏️</button>
     </div>
-    <div class="pf-pl" id="pf-pl">✨ Plan Gratuito</div>
+    <div class="pf-pl" id="pf-pl"></div>
     <button onclick="dlgEditarPerfil()" style="display:block;margin:12px auto 0;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:99px;padding:6px 16px;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--fb)">✏️ Editar perfil</button>
   </div>
   <div class="cont fi">
@@ -975,17 +977,17 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     </div>
     <div class="cfg-g">
       <div class="cfg-gt">Mi avatar</div>
-      <div class="cfg-i" onclick="irA('p-wiz')"><div class="cfg-ico" id="cf-av">👤</div><div class="cfg-tx"><div class="cfg-n">Cambiar foto de perfil</div><div class="cfg-s">Elige tu avatar favorito</div></div><div>›</div></div>
+      <div class="cfg-i" onclick="if(exigirEscritura())irA('p-wiz')"><div class="cfg-ico" id="cf-av">👤</div><div class="cfg-tx"><div class="cfg-n">Cambiar foto de perfil</div><div class="cfg-s">Elige tu avatar favorito</div></div><div>›</div></div>
     </div>
     <div class="cfg-g">
       <div class="cfg-gt">Mi cuenta</div>
-      <div class="cfg-i" onclick="abrirPremium()"><div class="cfg-ico">⭐</div><div class="cfg-tx"><div class="cfg-n">Desbloquear todo</div><div class="cfg-s">$199 MXN lanzamiento — pago único</div></div><div>›</div></div>
+      <div class="cfg-i" onclick="abrirPremium()"><div class="cfg-ico">⭐</div><div class="cfg-tx"><div class="cfg-n" id="cf-prem-n">Activar mi compra</div><div class="cfg-s" id="cf-prem-s">$199 pago único, sin suscripción</div></div><div>›</div></div>
       <div class="cfg-i" onclick="respaldar()"><div class="cfg-ico">📧</div><div class="cfg-tx"><div class="cfg-n">Respaldar en Gmail</div><div class="cfg-s">Guardar datos por correo</div></div><div>›</div></div>
       <div class="cfg-i" onclick="dlgRestaurar()"><div class="cfg-ico">📥</div><div class="cfg-tx"><div class="cfg-n">Restaurar mi información</div><div class="cfg-s">Si cambiaste de celular o perdiste tus datos</div></div><div>›</div></div>
       <div style="background:#FDF2EC;border-radius:10px;padding:10px 12px;margin:4px 0 2px;font-size:12px;color:#6B4C3B;line-height:1.5">
         💡 Guarda tu respaldo en <strong>Favoritos de WhatsApp</strong> para recuperarlo si cambias de cel
       </div>
-      <div class="cfg-i" onclick="irA('p-wiz')"><div class="cfg-ico">✏️</div><div class="cfg-tx"><div class="cfg-n">Editar mi perfil</div><div class="cfg-s">Nombre, cumpleaños, monto</div></div><div>›</div></div>
+      <div class="cfg-i" onclick="if(exigirEscritura())irA('p-wiz')"><div class="cfg-ico">✏️</div><div class="cfg-tx"><div class="cfg-n">Editar mi perfil</div><div class="cfg-s">Nombre, cumpleaños, monto</div></div><div>›</div></div>
       <div class="cfg-i" onclick="document.getElementById('mo-acerca').classList.add('on')"><div class="cfg-ico">ℹ️</div><div class="cfg-tx"><div class="cfg-n">Acerca de la app</div><div class="cfg-s">Versión, privacidad y contacto</div></div><div>›</div></div>
     </div>
   </div>
@@ -1126,25 +1128,23 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 <div class="prem-o" id="mo-prem">
   <div class="prem-sh">
     <div class="prem-top">
-      <div style="font-size:44px;margin-bottom:10px">✨</div>
-      <div class="prem-t">¡Desbloquea todo!</div>
-      <div class="prem-s">Ya sabes a dónde se va tu dinero — ¿seguimos juntas? 😊</div>
+      <div style="font-size:44px;margin-bottom:10px">&#x1F33F;</div>
+      <div class="prem-t" id="prem-tit">Quédate con todo, para siempre</div>
+      <div class="prem-s" id="prem-sub">Todo lo que ya registraste se queda contigo.</div>
     </div>
-    <div class="prem-pr"><div style="font-size:13px;color:#7D5F4E;text-decoration:line-through;margin-bottom:2px">$299 MXN</div><div class="prem-m">$199</div><div class="prem-l">MXN — precio de lanzamiento ✨ Pago único, para siempre</div></div>
+    <div class="prem-pr"><div class="prem-m">$199</div><div class="prem-l">pago único con impuestos incluidos, sin suscripción</div></div>
     <div class="prem-fs">
-      <div class="fi-it"><span class="fi-ck">✓</span>Registros ilimitados</div>
-      <div class="fi-it"><span class="fi-ck">✓</span>Sobres personalizados ilimitados</div>
-      <div class="fi-it"><span class="fi-ck">✓</span>Metas con calculadora dual</div>
-      <div class="fi-it"><span class="fi-ck">✓</span>Mi Tandita completa</div>
-      <div class="fi-it"><span class="fi-ck">✓</span>Control de préstamos</div>
-      <div class="fi-it"><span class="fi-ck">✓</span>Diagnóstico de salud financiera</div>
-      <div class="fi-it"><span class="fi-ck">✓</span>Reportes y gráficas completas</div>
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#7D5F4E;margin-bottom:4px">Todo lo que ya usaste, sin límite de tiempo</div>
+      <div class="fi-it"><span class="fi-ck">✓</span>Registrar gastos, sobres y metas sin límite</div>
+      <div class="fi-it"><span class="fi-ck">✓</span>Tarjetas, MSI, préstamos y Mi Tandita</div>
+      <div class="fi-it"><span class="fi-ck">✓</span>Cierre de mes, Mi Historia y reportes en PDF</div>
+      <div class="fi-it"><span class="fi-ck">✓</span>Tus datos siguen solo en tu celular</div>
       <div class="fi-it"><span class="fi-ck">✓</span>Actualizaciones futuras incluidas</div>
     </div>
     <div class="prem-bs">
-      <button class="btn-prem" onclick="irLemon()">Obtener por $199 MXN — Lanzamiento →</button>
-      <button class="btn-cod" onclick="dlgCodigo()">Tengo un código de acceso</button>
-      <button class="btn-cod" onclick="cerrarMo('mo-prem')" style="border:none;color:#7D5F4E;font-size:12px">Seguir con versión gratuita</button>
+      <button class="btn-prem" id="prem-comprar" onclick="irLemon()">Comprar — $199 MXN pago único</button>
+      <button class="btn-cod" id="prem-codigo" onclick="dlgCodigo()">Ya compré, tengo mi código</button>
+      <button class="btn-cod" id="prem-cerrar" onclick="cerrarMo('mo-prem')" style="border:none;color:#7D5F4E;font-size:12px">Ahora no</button>
     </div>
   </div>
 </div>
@@ -1348,16 +1348,29 @@ window.addEventListener('storage', function(e) {
 // nuevo y sin que salga ningún dato de la usuaria (la petición es a nuestro
 // propio dominio). Si no hay internet, se usa la hora del dispositivo tal
 // cual, igual que antes — no rompe el uso offline.
+// La petición lleva "?__hora=" para que sw.js la deje pasar directo a la red
+// (nunca se responde ni se guarda en caché). Sin internet o si falla: no pasa
+// nada, sin errores ni avisos.
 function sincronizarHoraReal() {
   if (!navigator.onLine) return;
   try {
-    fetch(location.pathname || '.', { method: 'HEAD', cache: 'no-store' }).then(function(r) {
-      var fechaSrv = r.headers.get('date');
+    fetch((location.pathname || '/') + '?__hora=' + Date.now(), { method: 'HEAD', cache: 'no-store' }).then(function(r) {
+      var fechaSrv = r && r.headers ? r.headers.get('date') : null;
       if (!fechaSrv) return;
       var srv = new Date(fechaSrv).getTime();
       if (isNaN(srv)) return;
       E.horaServidorOffset = srv - Date.now();
       E.horaServidorSync = Date.now();
+      // La hora del servidor es la verdad: si el reloj del dispositivo estuvo
+      // adelantado por error y dejó maxHoraVista en el futuro, aquí se corrige
+      // (si no, la prueba terminaría antes de tiempo para siempre).
+      E.maxHoraVista = srv;
+      // Celular adelantado al instalar: si la prueba "empezó" en el futuro,
+      // se recorta a la hora real y los 35 días se cuentan desde ahí.
+      if (E.pruebaInicio && new Date(E.pruebaInicio).getTime() > srv) {
+        E.pruebaInicio = new Date(srv).toISOString();
+        E.pruebaFin = new Date(srv + DIAS_PRUEBA * 864e5).toISOString();
+      }
       guardar();
     }).catch(function(){});
   } catch(e) {}
@@ -1370,38 +1383,113 @@ function horaConfiable() {
   }
   return new Date();
 }
+// "Ahora" que nunca retrocede: si el reloj del dispositivo se atrasa (aun sin
+// internet), se usa la fecha más reciente que la app ya vio. guardar() la
+// persiste en E.maxHoraVista.
+function ahora() {
+  var h = horaConfiable().getTime();
+  var max = Number(E.maxHoraVista) || 0;
+  if (h >= max) { E.maxHoraVista = h; return new Date(h); }
+  return new Date(max);
+}
 
-// ── PREMIUM CON EXPIRACIÓN ──
-function isPrem() {
-  if (!E.prem) return false;
-  // Si no tiene fecha de expiración = compra real permanente
-  if (!E.fechaExpPrem) return true;
-  // Verificar si expiró
-  var expira = new Date(E.fechaExpPrem);
-  var hoy = horaConfiable();
-  // Señal barata de reloj manipulado hacia atrás: "ahora" nunca debería ser
-  // anterior al momento en que se activó el código — no necesita red para
-  // detectarse. Se deja un margen de 24h para no castigar por husos horarios.
-  var relojSospechoso = E.fechaPrem && hoy.getTime() < (new Date(E.fechaPrem)).getTime() - 24*60*60*1000;
-  if (hoy > expira || relojSospechoso) {
-    // Expiró — desactivar y avisar una sola vez
-    if (!E.premExpiradoAviso) {
-      E.prem = false;
-      E.premExpiradoAviso = true;
-      guardar();
-      setTimeout(function(){
-        dlg({e:'⏰',t:'Tu periodo de prueba terminó',
-          s:'Tus ' + (E.diasPrem||35) + ' días de acceso gratuito han terminado. ¿Seguimos juntas?',
-          btns:[
-            {l:'Ver planes →',c:'p',f:function(){ cerrarDlg(); abrirPremium(); }},
-            {l:'Seguir gratis',c:'s',f:cerrarDlg}
-          ]
-        });
-      }, 1000);
-    }
-    return false;
+// ── PRUEBA DE 35 DÍAS Y MODO CONSULTA ──
+var DIAS_PRUEBA = 35;
+// Licencia de Lemon Squeezy activada = sin límites.
+function tieneLicencia() {
+  return !!(E.prem && E.premTipo === 'compra' && E.lsLicenseKey);
+}
+// Días que le quedan a la prueba (0 si ya terminó).
+function diasPrueba() {
+  if (!E.pruebaFin) return DIAS_PRUEBA;
+  var ms = new Date(E.pruebaFin).getTime() - ahora().getTime();
+  return ms > 0 ? Math.ceil(ms / 864e5) : 0;
+}
+// Candado central: ¿puede agregar, editar o borrar? Sin pruebaFin (durante la
+// bienvenida, antes de que arranque la prueba) no se bloquea nada.
+function puedeEscribir() {
+  if (tieneLicencia()) return true;
+  if (!E.pruebaFin) return true;
+  return ahora().getTime() < new Date(E.pruebaFin).getTime();
+}
+// Uso: if (!exigirEscritura()) return;
+// En modo consulta cierra lo que esté abierto y muestra el aviso para comprar.
+function exigirEscritura() {
+  if (puedeEscribir()) return true;
+  cerrarDlg();
+  ['mo-s','mo-gal','mo-agenda','mo-rinc'].forEach(function(id) { cerrarMo(id); });
+  var moLim = document.getElementById('mo-limites');
+  if (moLim) moLim.remove();
+  avisoModoConsulta();
+  return false;
+}
+function avisoModoConsulta() {
+  dlg({e:'\uD83C\uDF3F', t:'Tu prueba de ' + DIAS_PRUEBA + ' días terminó',
+    s:'Tus datos están a salvo y puedes seguir consultándolos, exportarlos y respaldarlos. ' +
+      'Para volver a registrar, activa tu compra: $199, pago único con impuestos incluidos, sin suscripción. ' +
+      'Continúas justo donde te quedaste.',
+    btns:[
+      {l:'Comprar \u2014 $199', c:'p', f:function() { irLemon(); }},
+      {l:'Ya compré, tengo mi código', c:'s', f:function() { dlgCodigo(); }},
+      {l:'Ahora no', c:'s', f:null}
+    ]
+  });
+}
+
+// Arranca la prueba la primera vez que se entra a la app con esta versión:
+// usuaria nueva al terminar la bienvenida, o usuaria existente (incluidas las
+// beta testers) al recibir la actualización. Sin código.
+function iniciarPruebaSiFalta() {
+  if (E.pruebaInicio && E.pruebaFin) return;
+  var ini = ahora();
+  E.pruebaInicio = ini.toISOString();
+  E.pruebaFin = new Date(ini.getTime() + DIAS_PRUEBA * 864e5).toISOString();
+  E.pruebaAvisoInicio = false;
+  guardar();
+}
+// Fecha de fin de la prueba en texto: "16 de noviembre de 2026".
+function fechaFinPruebaTxt() {
+  return new Date(E.pruebaFin).toLocaleDateString('es-MX', {day:'numeric', month:'long', year:'numeric'});
+}
+// Espera a que no haya otro diálogo abierto (p. ej. "¡Nuevo mes!") para no
+// taparlo. Si sigue ocupado tras ~30 s, se rinde: el aviso sale la próxima vez.
+function mostrarCuandoLibre(fn, intentos) {
+  intentos = intentos || 0;
+  var d = document.getElementById('dlg');
+  if (d && d.style.display === 'flex') {
+    if (intentos < 60) setTimeout(function() { mostrarCuandoLibre(fn, intentos + 1); }, 500);
+    return;
   }
-  return true;
+  fn();
+}
+// Aviso único "Tu prueba comenzó". Al cerrarlo sigue con "despues" (p. ej. el
+// aviso de cumpleaños), para que un diálogo no tape al otro.
+function avisoInicioPrueba(despues) {
+  E.pruebaAvisoInicio = true;
+  guardar();
+  dlg({e:'\uD83C\uDF81', t:'Tu prueba de ' + DIAS_PRUEBA + ' d\u00EDas comenz\u00F3',
+    s:'Tienes acceso completo hasta el ' + fechaFinPruebaTxt() + '. Puedes ver los d\u00EDas que te quedan en tu Perfil.',
+    btns:[{l:'\u00A1Empezar! \uD83C\uDF31', c:'p', f:function() { if (despues) despues(); }}]
+  });
+}
+
+// Aviso único al entrar por primera vez en modo consulta.
+function debeAvisarFinPrueba() {
+  return !!E.pruebaFin && !E.pruebaAvisoFin && !tieneLicencia() && !puedeEscribir();
+}
+function avisoFinPrueba() {
+  E.pruebaAvisoFin = true;
+  guardar();
+  dlg({e:'\uD83C\uDF3F', t:'Tus ' + DIAS_PRUEBA + ' días de prueba terminaron',
+    s:'Tus datos están a salvo y puedes consultarlos, exportarlos y respaldarlos cuando quieras. ' +
+      'Continúa justo donde te quedaste: $199, pago único con impuestos incluidos, sin suscripción.',
+    btns:[
+      {l:'Comprar \u2014 $199', c:'p', f:function() { irLemon(); }},
+      {l:'Ya compré, tengo mi código', c:'s', f:function() { dlgCodigo(); }},
+      {l:'\uD83D\uDCBE Hacer respaldo', c:'s', f:function() { respaldar(); }},
+      {l:'Solo consultar', c:'s', f:null}
+    ]
+  });
 }
 
 // ── INSTALL BANNER ──
@@ -1431,6 +1519,7 @@ function biTab(tab, btn) {
 }
 
 function guardar() {
+  ahora(); // actualiza E.maxHoraVista antes de persistir
   try {
     localStorage.setItem('adsf4', JSON.stringify(E));
   } catch(e) {
@@ -1656,12 +1745,34 @@ function restProcesar() {
     s: preview,
     btns:[
       {l:'Si, recuperar todo', c:'p', f:function(){
-        var premActual = E.prem;
-        var fechaExp = E.fechaExpPrem;
+        // Licencia, prueba y reloj NUNCA se toman del respaldo (un respaldo
+        // editado o prestado no debe dar acceso): se conservan los del dispositivo.
+        var CAMPOS_LICENCIA = ['prem','premTipo','fechaPrem','fechaExpPrem','diasPrem','premExpiradoAviso',
+          'codigosUsados','lsLicenseKey','lsInstanceId','horaServidorOffset','horaServidorSync',
+          'maxHoraVista','pruebaInicio','pruebaFin','pruebaAvisoInicio','pruebaAvisoFin'];
+        var iniDisp = E.pruebaInicio ? new Date(E.pruebaInicio).getTime() : NaN;
+        var iniResp = parsed.pruebaInicio ? new Date(parsed.pruebaInicio).getTime() : NaN;
+        if (!isNaN(iniResp)) iniResp = Math.min(iniResp, ahora().getTime()); // nunca en el futuro
+        var maxResp = Number(parsed.maxHoraVista) || 0;
+        var delDispositivo = {};
+        CAMPOS_LICENCIA.forEach(function(c) { delDispositivo[c] = E[c]; delete parsed[c]; });
         // Merge sobre los valores por defecto (igual que la carga inicial),
         // para no perder estructuras nuevas que el respaldo viejo no tenía.
         for (var k in parsed) { if (parsed.hasOwnProperty(k)) E[k] = parsed[k]; }
-        if (premActual) { E.prem = premActual; E.fechaExpPrem = fechaExp; }
+        CAMPOS_LICENCIA.forEach(function(c) {
+          if (delDispositivo[c] === undefined) delete E[c]; else E[c] = delDispositivo[c];
+        });
+        // Regla de la prueba al restaurar: si el dispositivo o el respaldo ya
+        // tienen fecha, se conserva la MÁS ANTIGUA (no se reinician los 35 días).
+        // Solo si ninguno tiene fecha, iniciarApp() → iniciarPruebaSiFalta()
+        // arranca los 35 días desde este momento.
+        var iniMin = isNaN(iniDisp) ? iniResp : (isNaN(iniResp) ? iniDisp : Math.min(iniDisp, iniResp));
+        if (!isNaN(iniMin)) {
+          E.pruebaInicio = new Date(iniMin).toISOString();
+          E.pruebaFin = new Date(iniMin + DIAS_PRUEBA * 864e5).toISOString();
+          if (isNaN(iniDisp)) E.pruebaAvisoInicio = true; // ya empezó en el otro dispositivo
+        }
+        E.maxHoraVista = Math.max(Number(E.maxHoraVista) || 0, maxResp);
         guardar();
         iniciarApp();
         setTimeout(function(){ toast('Datos recuperados. ' + nRegs + ' registros restaurados'); }, 400);
@@ -1689,6 +1800,7 @@ function w3fin() {
 // — para una usuaria existente no tiene sentido volver a pasar por el
 // onboarding completo solo para cambiar un monto.
 function dlgEditarLimites() {
+  if (!exigirEscritura()) return; // modo consulta
   var mo = document.createElement('div');
   mo.id = 'mo-limites';
   mo.style.cssText = 'display:flex;position:fixed;inset:0;z-index:9999;background:rgba(61,43,31,.7);align-items:flex-end;justify-content:center;';
@@ -1719,6 +1831,7 @@ function cerrarEditarLimites() {
   if (mo) mo.remove();
 }
 function guardarLimitesEditados() {
+  if (!exigirEscritura()) return; // modo consulta
   var inps = document.querySelectorAll('#mo-limites .swi-val');
   for (var i = 0; i < inps.length; i++) {
     var id = inps[i].getAttribute('data-id');
@@ -1734,16 +1847,24 @@ function guardarLimitesEditados() {
 
 // ════ APP ═════════════════════════════════════════
 function iniciarApp() {
+  iniciarPruebaSiFalta();
   sincronizarHoraReal();
   actualizarUI();
   renderSobres();
   renderMetasRes();
   irA('p-ini');
   mostrarInstall();
-  chkCumpleRetro();
+  if (!E.pruebaAvisoInicio && !tieneLicencia() && puedeEscribir()) {
+    mostrarCuandoLibre(function() { avisoInicioPrueba(chkCumpleRetro); });
+  } else if (debeAvisarFinPrueba()) {
+    mostrarCuandoLibre(avisoFinPrueba);
+  } else {
+    chkCumpleRetro();
+  }
 }
 function chkCumpleRetro(){
   if(E.perfil.cumpleAvisado) return;
+  if(!puedeEscribir()) return; // modo consulta: no crea la meta; se hará al comprar
   var creoMeta = crearMetaCumpleSiAplica();
   if(creoMeta){
     E.perfil.cumpleAvisado = true;
@@ -1786,6 +1907,8 @@ function actualizarUI() {
   var sal = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
   st('h-sal', sal);
   st('h-nom', nom + ' 🌿');
+  var chipC = document.getElementById('chip-consulta');
+  if (chipC) chipC.style.display = puedeEscribir() ? 'none' : 'inline-flex';
   var hav = document.getElementById('h-av');
   if (hav) hav.textContent = p.av || '👤';
   st('rinc-n', 'El Rincón de ' + nom);
@@ -1885,7 +2008,7 @@ function chkCumple() {
 function irMetaCumple(){
   if(!E.metas) E.metas=[];
   var yaExiste = E.metas.some(function(m){ return m.esCumple===true; });
-  if(!yaExiste){
+  if(!yaExiste && puedeEscribir()){ // en modo consulta solo navega
     E.metas.push({
       nom:'Mi regalo de cumpleaños',
       ico:'🎂',
@@ -2190,6 +2313,7 @@ function renderTransaccionesDelSobre(sobreId) {
 }
 
 function abrirModalEdicionTransaccion(id) {
+  if (!exigirEscritura()) return; // modo consulta
   var r = null;
   for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === id) { r = E.regs[i]; break; } }
   if (!r) return;
@@ -2227,6 +2351,7 @@ function abrirModalEdicionTransaccion(id) {
 }
 
 function dlgEliminarTransaccion(id) {
+  if (!exigirEscritura()) return; // modo consulta
   var r = null;
   for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === id) { r = E.regs[i]; break; } }
   if (!r) return;
@@ -2247,6 +2372,7 @@ function dlgEliminarTransaccion(id) {
 }
 
 function selSub(subId, subNom) {
+  if (!exigirEscritura()) return; // modo consulta
   E.subA = subId;
   var frm = document.getElementById('frm');
   frm.style.display = 'block';
@@ -2258,10 +2384,10 @@ function selSub(subId, subNom) {
 }
 
 function guardarGasto() {
+  if (!exigirEscritura()) return; // modo consulta
   var mto = parseFloat(document.getElementById('frm-m').value);
   var nota = document.getElementById('frm-n').value.trim();
   if (!mto || mto <= 0) { toast('Escribe el monto del gasto 💸'); return; }
-  if (!isPrem() && E.regs.length >= 10) { cerrarMo('mo-s'); abrirPremium(); return; }
   E.regs.push({id:Date.now(), sobre:E.sobreA, sub:E.subA, mto:mto, nota:nota, fecha:new Date().toISOString()});
   contReg();
   guardar();
@@ -2420,6 +2546,7 @@ function renderAgenda() {
 }
 
 function dlgNuevoServicio() {
+  if (!exigirEscritura()) return; // modo consulta
   dlg({e:'📅',t:'¿Qué servicio agregas?',
     btns:[
       {l:'💡 CFE',c:'s',f:function(){dlgCfgSrv({ico:'💡',nom:'CFE',per:'bimestral'});}},
@@ -2433,6 +2560,7 @@ function dlgNuevoServicio() {
 }
 
 function dlgCfgSrv(preset) {
+  if (!exigirEscritura()) return; // modo consulta
   dlg({e:preset.ico,t:preset.nom,s:'¿Qué día del mes vence? Ej: 5, 8, 15…',
     inp:true,ph:'Día del mes (ej: 5)',md:'decimal',
     btns:[
@@ -2460,6 +2588,7 @@ function dlgPerSrv(preset, dia) {
 }
 
 function dlgMtoSrv(preset, dia, per) {
+  if (!exigirEscritura()) return; // modo consulta
   dlg({e:'💰',t:'¿Cuánto pagas aprox?',s:preset.ico+' '+preset.nom+' — '+(PERIODOS[per]?PERIODOS[per].lb:per),
     inp:true,ph:'$ Monto aproximado (opcional)',md:'decimal',
     btns:[
@@ -2483,6 +2612,7 @@ function dlgMtoSrv(preset, dia, per) {
 }
 
 function dlgSrvCustom() {
+  if (!exigirEscritura()) return; // modo consulta
   abrirGaleria(function(ico) {
     dlg({e:ico,t:'Nombre del servicio',s:'¿Cómo se llama? Ej: Netflix, Gym, Seguro médico…',
       inp:true,ph:'Nombre del servicio',md:'text',
@@ -2498,13 +2628,13 @@ function dlgSrvCustom() {
 }
 
 function marcarPagado(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var s = (E.servicios||[])[idx];
   if (!s) return;
   dlg({e:'✅',t:'¿Ya pagaste?',
     inf:s.ico+' '+s.nom+(s.mto?'\nMonto: '+fmx(s.mto):''),
     btns:[
       {l:'Sí, ya pagué ✓',c:'p',f:function(){
-        if (s.mto > 0 && !isPrem() && E.regs.length>=10) { cerrarDlg(); abrirPremium(); return; }
         var regId = null;
         if (s.mto > 0) {
           // Mapear servicio a su subcategoría correcta
@@ -2535,6 +2665,7 @@ function marcarPagado(idx) {
 }
 
 function desmarcarPagado(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var s = (E.servicios||[])[idx];
   if (!s) return;
   var reg = null;
@@ -2561,6 +2692,7 @@ function desmarcarPagado(idx) {
 
 // ════ SOBRES PERSONALIZADOS ═══════════════════════
 function dlgNuevoSobre() {
+  if (!exigirEscritura()) return; // modo consulta
   abrirGaleria(function(ico) {
     dlg({e:ico,t:'Nuevo sobre',s:'¿Cómo se llama tu sobre? Ej: Mascotas, Viajes, Reparaciones…',
       inp:true,ph:'Nombre del sobre',md:'text',
@@ -2581,6 +2713,7 @@ function dlgNuevoSobre() {
 }
 
 function dlgElimSobre(id) {
+  if (!exigirEscritura()) return; // modo consulta
   var s = (E.custom||[]).filter(function(x){return x.id===id;})[0];
   if (!s) return;
   dlg({e:'🗑',t:'Eliminar sobre',s:'¿Eliminar "'+s.cor+'"? Se perderán sus categorías. No se puede deshacer.',
@@ -2595,6 +2728,7 @@ function dlgElimSobre(id) {
 }
 
 function dlgNuevaSubcat(sobreId) {
+  if (!exigirEscritura()) return; // modo consulta
   abrirGaleria(function(ico) {
     dlg({e:ico,t:'Nueva categoría',s:'¿Cómo se llama? Ej: Dieta especial, Bebé, Medicina…',
       inp:true,ph:'Nombre de la categoría',md:'text',
@@ -2745,6 +2879,7 @@ function renderAhorroSobre(cont) {
 }
 
 function rapRegistrarAhorro() {
+  if (!exigirEscritura()) return; // modo consulta
   var subs = [{id:'emerg',ico:'🛡️',nom:'Fondo de emergencias'},
               {id:'retiro',ico:'🌱',nom:'Retiro / Afore extra'},
               {id:'libre',ico:'🌠',nom:'Ahorro libre'}];
@@ -2755,7 +2890,6 @@ function rapRegistrarAhorro() {
       {l:'Guardar ahorro',c:'p',f:function(v){
         var val=parseFloat(v);
         if(!val||val<=0)return toast('Ingresa un monto válido');
-        if(!E.prem&&E.regs.length>=10){cerrarDlg();abrirPremium();return;}
         E.regs.push({id:Date.now(),sobre:'ahorro',sub:'libre',mto:val,nota:'Ahorro',fecha:new Date().toISOString()});
         contReg(); guardar(); actualizarUI(); renderSobres();
         abrirSobre('ahorro');
@@ -2824,6 +2958,7 @@ function itmPr(p,i,tipo) {
 }
 
 function dlgEditarPr(tipo, idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var pr = getPr(); var lista = tipo==='me'?'me':'yo'; var p = pr[lista][idx];
   if (!p) return;
   dlg({
@@ -2844,6 +2979,7 @@ function dlgEditarPr(tipo, idx) {
 }
 
 function dlgEliminarPr(tipo, idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var pr = getPr(); var lista = tipo==='me'?'me':'yo'; var p = pr[lista][idx];
   if (!p) return;
   dlg({
@@ -2861,6 +2997,7 @@ function dlgEliminarPr(tipo, idx) {
 }
 
 function dlgNuevoPr(tipo) {
+  if (!exigirEscritura()) return; // modo consulta
   var esMe=tipo==='me'; var q='',mto=0;
   dlg({e:esMe?'📥':'📤',t:esMe?'¿Quién te debe?':'¿A quién le debes?',
     s:esMe?'Escribe el nombre de quien te pidió prestado':'Escribe el nombre de quien te prestó',
@@ -2898,6 +3035,7 @@ function dlgNuevoPr(tipo) {
 }
 
 function marcarPr(tipo,idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var pr=getPr();var lista=tipo==='me'?'me':'yo';var p=pr[lista][idx];if(!p)return;
   var esMe=tipo==='me';
   dlg({e:'✅',t:esMe?'¿Ya cobré?':'¿Ya pagué?',inf:'👤 '+p.q+'\n💰 '+fmx(p.mto)+'\n📝 '+p.pa,
@@ -2974,6 +3112,7 @@ function renderTandas(cont) {
 }
 
 function dlgNuevaTanda() {
+  if (!exigirEscritura()) return; // modo consulta
   var tn='',tm=0,tp=0,tper='semanal';
   dlg({e:'🤝',t:'Nueva tanda',s:'¿Cómo se llama? Ej: Tanda del trabajo, Con las vecinas…',inp:true,ph:'Nombre de la tanda',md:'text',
     btns:[
@@ -3002,6 +3141,7 @@ function dlgNuevaTanda() {
   });
 }
 function dlgTandaMonto(tn,tper,tm,tp){
+  if (!exigirEscritura()) return; // modo consulta
   var perLabel={'semanal':'semana','quincenal':'quincena','mensual':'mes'};
   var lab=perLabel[tper]||tper;
   dlg({e:'💰',t:'Monto por '+lab,s:'¿Cuánto aporta cada persona por '+lab+'?',inp:true,ph:'Ej: 200, 300, 500…',md:'decimal',
@@ -3035,6 +3175,7 @@ function dlgTandaMonto(tn,tper,tm,tp){
 }
 
 function dlgPagoTanda(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var t=getTandas()[idx];if(!t)return;
   var pgs=t.pgs?t.pgs.length:0;
   if(pgs>=t.part){toast('¡Esta tanda ya terminó! 🎉');return;}
@@ -3044,9 +3185,6 @@ function dlgPagoTanda(idx) {
       {l:'✓ Confirmar pago',c:'p',f:function(){
         // Si esta semana le toca COBRAR, no se descuenta de su presupuesto — recibe el dinero, no lo gasta
         var esCobro = (t.turno===pgs+1);
-        // Validar el límite freemium ANTES de tocar el estado de la tanda —
-        // si se corta aquí, el pago no debe quedar marcado como hecho a medias
-        if(!esCobro && !isPrem() && E.regs.length>=10){cerrarDlg();abrirPremium();return;}
         if(!t.pgs)t.pgs=[];
         t.pgs.push({sem:pgs+1,fecha:new Date().toISOString(),mto:t.mto});
         if(!esCobro){
@@ -3072,6 +3210,7 @@ function dlgDetTanda(idx) {
 }
 
 function dlgEditarTanda(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var t=getTandas()[idx];if(!t)return;
   var tn=t.nom,tm=t.mto,tp=t.part,tper=t.periodo||'semanal',ttu=t.turno;
   dlg({e:'✏️',t:'Editar tanda',s:'¿Cómo se llama?',inp:true,ph:'Nombre de la tanda',md:'text',val:tn,
@@ -3092,6 +3231,7 @@ function dlgEditarTanda(idx) {
   });
 }
 function dlgEditarTandaMonto(idx,tn,tper,tm,tp,ttu){
+  if (!exigirEscritura()) return; // modo consulta
   var perLabel={'semanal':'semana','quincenal':'quincena','mensual':'mes'};
   var lab=perLabel[tper]||tper;
   dlg({e:'💰',t:'Monto por '+lab,s:'¿Cuánto aporta cada persona por '+lab+'?',inp:true,ph:'Ej: 200, 300, 500…',md:'decimal',val:tm,
@@ -3126,6 +3266,7 @@ function dlgEditarTandaMonto(idx,tn,tper,tm,tp,ttu){
 }
 
 function dlgDelTanda(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var t=getTandas()[idx];if(!t)return;
   dlg({e:'🗑',t:'Eliminar tanda',s:'¿Eliminar "'+t.nom+'"? No se puede deshacer.',
     btns:[
@@ -3245,19 +3386,20 @@ function renderPerfil() {
   var cfav=document.getElementById('cf-av');if(cfav)cfav.textContent=p.av||'👤';
   var ms=['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   if(p.dia&&p.mes)st('pf-c','🎂 '+p.dia+' de '+ms[parseInt(p.mes)]);
-  // Mostrar plan con días restantes si es beta
+  // Estado: licencia / prueba con días restantes / modo consulta
   var planTxt;
-  if(isPrem()){
-    if(E.fechaExpPrem){
-      var diasRest = Math.ceil((new Date(E.fechaExpPrem) - new Date()) / 864e5);
-      planTxt = '⏳ Beta activa — ' + diasRest + ' días restantes';
-    } else {
-      planTxt = '⭐ Plan Premium — ilimitado';
-    }
+  if (tieneLicencia()) {
+    planTxt = '\u2B50 Licencia activa — sin límites';
+  } else if (puedeEscribir()) {
+    var diasRest = diasPrueba();
+    planTxt = '\uD83C\uDF81 Prueba — ' + diasRest + (diasRest === 1 ? ' día restante' : ' días restantes') +
+      (E.pruebaFin ? ' (hasta el ' + fechaFinPruebaTxt() + ')' : '');
   } else {
-    planTxt = '✨ Plan Gratuito — ' + E.regs.length + '/10 registros';
+    planTxt = '\uD83D\uDD12 Modo consulta — activa tu compra para seguir registrando';
   }
   st('pf-pl', planTxt);
+  st('cf-prem-n', tieneLicencia() ? 'Mi licencia' : 'Activar mi compra');
+  st('cf-prem-s', tieneLicencia() ? 'Activa — gracias por tu compra' : '$199 pago único, sin suscripción');
   st('cf-mto',p.mto?fmx(p.mto)+' al mes':'No configurado');
   var pr=getPr();
   var tdm=pr.me.filter(function(x){return x.st==='pe';}).reduce(function(s,x){return s+x.mto;},0);
@@ -3266,6 +3408,7 @@ function renderPerfil() {
 }
 
 function dlgEditMonto() {
+  if (!exigirEscritura()) return; // modo consulta
   dlg({e:'💰',t:'¿Con cuánto cuentas?',s:'No importa si es sueldo, gasto o pensión — dinos con cuánto contamos 😊',
     inp:true,ph:'$ Monto mensual',md:'decimal',
     btns:[
@@ -3279,6 +3422,7 @@ function dlgEditMonto() {
 }
 
 function dlgEditarNombre() {
+  if (!exigirEscritura()) return; // modo consulta
   var p=E.perfil;
   dlg({e:'✏️',t:'Editar mi nombre',s:'¿Cómo te llamas?',inp:true,ph:'Tu nombre o apodo',md:'text',val:p.nom||'',
     btns:[
@@ -3293,6 +3437,7 @@ function dlgEditarNombre() {
 }
 
 function dlgEditarCumple() {
+  if (!exigirEscritura()) return; // modo consulta
   var p=E.perfil;
   dlg({e:'🎂',t:'¿Qué día es tu cumpleaños?',s:'Del 1 al 31 — déjalo vacío si prefieres omitirlo',inp:true,ph:'Día',md:'decimal',val:p.dia||'',
     btns:[
@@ -3319,6 +3464,7 @@ function dlgEditarCumple() {
 }
 
 function dlgEditarPerfil() {
+  if (!exigirEscritura()) return; // modo consulta
   var p=E.perfil;
   dlg({e:'✏️',t:'Editar mi perfil',s:'¿Cómo te llamas?',inp:true,ph:'Tu nombre o apodo',md:'text',val:p.nom||'',
     btns:[
@@ -3354,7 +3500,19 @@ function dlgEditarPerfil() {
 }
 
 // ════ PREMIUM ═════════════════════════════════════
-function abrirPremium(){document.getElementById('mo-prem').classList.add('on');}
+function abrirPremium(){
+  var lic = tieneLicencia();
+  var consulta = !puedeEscribir();
+  var dias = diasPrueba();
+  st('prem-tit', lic ? 'Tu licencia está activa' : consulta ? 'Continúa justo donde te quedaste' : 'Quédate con todo, para siempre');
+  st('prem-sub', lic ? 'Gracias por tu compra \uD83D\uDC9B Todo sigue desbloqueado.'
+    : consulta ? 'Tu prueba terminó. Tus datos están a salvo y no pierdes nada al comprar.'
+    : 'Te ' + (dias === 1 ? 'queda 1 día' : 'quedan ' + dias + ' días') + ' de prueba. Al comprar no pierdes nada de lo que registraste.');
+  st('prem-cerrar', consulta ? 'Solo consultar' : 'Ahora no');
+  var bC = document.getElementById('prem-comprar'); if (bC) bC.style.display = lic ? 'none' : '';
+  var bK = document.getElementById('prem-codigo'); if (bK) bK.style.display = lic ? 'none' : '';
+  document.getElementById('mo-prem').classList.add('on');
+}
 function irLemon(){
   // 👉 REEMPLAZA esta URL con tu URL real de Lemon Squeezy al crear el producto
   // Cuando tengas tu URL de Lemon Squeezy reemplaza TU-URL-AQUI
@@ -3367,54 +3525,17 @@ function irLemon(){
   setTimeout(function(){ window.open(URL_LEMON,'_blank'); }, 800);
 }
 function dlgCodigo(){
-  dlg({e:'🎟️',t:'Código de activación',s:'Ingresa tu código de acceso, o el código de licencia que te llegó por correo al comprar',
-    inp:true,ph:'Ej: BETA2026 o tu código de licencia',md:'text',
+  dlg({e:'🎟️',t:'Código de activación',s:'Escribe el código de licencia que te llegó por correo al comprar',
+    inp:true,ph:'Tu código de licencia (llegó a tu correo)',md:'text',
     btns:[
       {l:'Activar',c:'p',f:function(v){
         var raw = v.trim();
         if (!raw) { toast('Escribe tu código'); return; }
-        var cBeta = raw.toUpperCase().replace(/\s/g,'');
-        // BETA2026 = 35 días de prueba beta, validado 100% local (sin internet)
-        var CODIGOS_BETA = { 'BETA2026': 35 };
-        if (CODIGOS_BETA[cBeta] !== undefined) {
-          activarCodigoBeta(cBeta, CODIGOS_BETA[cBeta]);
-        } else {
-          // No es un código beta local — probar como licencia real de Lemon Squeezy
-          activarLicenciaLemonSqueezy(raw);
-        }
+        activarLicenciaLemonSqueezy(raw);
       }},
       {l:'Cancelar',c:'s',f:null}
     ]
   });
-}
-
-function activarCodigoBeta(c, dias){
-  // Si ya tiene una compra real (permanente, sin fecha de expiración), un código
-  // beta NUNCA debe pisarla con una fecha de vencimiento — evita degradar
-  // por accidente una compra pagada a una prueba temporal.
-  if (E.prem && !E.fechaExpPrem) {
-    toast('Ya tienes todo desbloqueado con tu compra — no necesitas este código 🎉');
-    return;
-  }
-  if (!E.codigosUsados) E.codigosUsados = [];
-  if (E.codigosUsados.indexOf(c) !== -1) {
-    toast('Este código ya fue usado en este dispositivo — no se puede activar de nuevo');
-    return;
-  }
-  var expira = new Date();
-  expira.setDate(expira.getDate() + dias);
-  E.prem = true;
-  E.premTipo = 'beta';
-  E.fechaPrem = new Date().toISOString();
-  E.fechaExpPrem = expira.toISOString();
-  E.diasPrem = dias;
-  E.codigosUsados.push(c);
-  guardar();
-  cerrarMo('mo-prem');
-  var msg = '¡Código válido! ' + dias + ' días desbloqueados 🎉\n'
-    + 'Tu acceso expira el ' + expira.toLocaleDateString('es-MX');
-  toast(msg);
-  renderPerfil();
 }
 
 // ── LICENCIA REAL DE LEMON SQUEEZY (compra con pago único) ──────
@@ -3473,6 +3594,7 @@ function activarLicenciaLemonSqueezy(licenseKey){
     cerrarMo('mo-prem');
     toast('¡Compra verificada! Todo desbloqueado para siempre 🎉');
     renderPerfil();
+    if (E.perfil.nom) actualizarUI(); // quita el chip "Modo consulta"
   }).catch(function(){
     toast('📶 No pudimos verificar tu código — revisa tu conexión (datos o WiFi) e intenta de nuevo. Tu código sigue siendo válido.');
   });
@@ -4191,7 +4313,21 @@ function confirmarCierre() {
 
   // ── PREGUNTAR QUÉ HACER CON EL SALDO ──────────────
   setTimeout(function() {
-    if (pos && dif > 0) {
+    if (pos && dif > 0 && !puedeEscribir()) {
+      // Modo consulta: archivar sí; mover dinero a metas no. El sobrante se
+      // arrastra solo al mes siguiente.
+      E.saldoArrastrado = dif;
+      E.tipoArrastre = 'positivo';
+      guardar();
+      dlg({
+        e: '\uD83C\uDF89', t: '¡Cerraste en positivo!',
+        s: 'Te sobró ' + fmx(dif) + ' en ' + nomMes + '. Lo pasamos como saldo inicial de ' + MESES_NOM[(mesIdx+1)%12] + '.',
+        btns: [
+          {l: '\uD83D\uDCAC Enviar resumen', c: 'p', f: function() { dlgOpcionesEnvio(snapshot); }},
+          {l: 'Entendido', c: 's', f: function() { actualizarUI(); renderSobres(); }}
+        ]
+      });
+    } else if (pos && dif > 0) {
       // CASO A: Sobró dinero — mostrar opciones
       dlg({
         e: '🎉', t: '¡Cerraste en positivo!',
@@ -4283,6 +4419,7 @@ function dlgOpcionesEnvio(snapshot) {
 }
 
 function dlgAbonarSobrante(monto, snapshot) {
+  if (!exigirEscritura()) return; // modo consulta
   var mts = getMetas();
   dlg({
     e: '🎯', t: 'Abonar a una meta',
@@ -4880,6 +5017,23 @@ function chkNuevoMes() {
   var mtoCerrado = (E.perfil.mto || 0) + (E.saldoArrastrado || 0) + (E.ingresoExtraMes || 0);
 
   var nomMes = MESES_NOM[hoy.getMonth()];
+  // Modo consulta: el cambio de mes y el archivo en Mi Historia siguen
+  // funcionando (igual que "Mismo monto que antes"), sin pedir monto nuevo.
+  if (!puedeEscribir()) {
+    if (!isNaN(mesIdxCerrado) && !isNaN(anioCerrado)) archivarMes(mesIdxCerrado, anioCerrado, mtoCerrado);
+    E.ultimoReset = mesActual;
+    E.saldoArrastrado = 0;
+    E.tipoArrastre = null;
+    E.ingresoExtraMes = 0;
+    E.limsExtraMes = {};
+    guardar();
+    var nomCerrado = isNaN(mesIdxCerrado) ? '' : MESES_NOM[mesIdxCerrado] + ' ';
+    setTimeout(function() {
+      actualizarUI(); renderSobres();
+      toast('\uD83D\uDCDA Guardamos ' + nomCerrado + 'en Mi Historia');
+    }, 600);
+    return;
+  }
   dlg({
     e: '🌟',
     t: '¡Nuevo mes, nuevo arranque!',
@@ -5251,6 +5405,7 @@ function calcDiasHasta(dia) {
 
 // ── DIÁLOGOS ──────────────────────────────────────
 function dlgNuevaTarjeta() {
+  if (!exigirEscritura()) return; // modo consulta
   dlg({
     e: '💳', t: '¿Qué tarjeta tienes?',
     inf: 'Elige tu banco o institución:',
@@ -5271,6 +5426,7 @@ function dlgNuevaTarjeta() {
 }
 
 function dlgConfigTarjeta(banco) {
+  if (!exigirEscritura()) return; // modo consulta
   var tc = {nom: banco.nom, ico: banco.ico, color: banco.color, cat: banco.cat, tasa: Math.round(banco.cat/1.3)};
   dlg({
     e: banco.ico, t: banco.nom,
@@ -5351,6 +5507,7 @@ function dlgConfigTarjeta(banco) {
 }
 
 function guardarTarjeta(tc) {
+  if (!exigirEscritura()) return; // modo consulta
   tc.id = 'tc_' + Date.now();
   getTarjetas().push(tc);
   guardar();
@@ -5366,6 +5523,7 @@ function dlgEditarTarjeta(idx) {
     inf: 'Saldo inicial: ' + fmx(t.saldoInicial||t.saldo) + '\nSaldo actual: ' + fmx(t.saldo),
     btns: [
       {l: '💰 Actualizar saldo actual', c: 'p', f: function() {
+        if (!exigirEscritura()) return; // modo consulta
         dlg({
           e: t.ico, t: 'Saldo actual de ' + t.nom,
           s: 'El saldo que debes HOY — después de tus últimos pagos y compras. NO incluyas tus compras a MSI, esas se manejan en el módulo de Meses Sin Intereses.',
@@ -5386,6 +5544,7 @@ function dlgEditarTarjeta(idx) {
         });
       }},
       {l: '📍 Corregir saldo inicial', c: 's', f: function() {
+        if (!exigirEscritura()) return; // modo consulta
         dlg({
           e: t.ico, t: 'Saldo inicial de ' + t.nom,
           s: 'La deuda que tenías cuando registraste esta tarjeta en la app (tu punto de partida). NO incluyas tus compras a MSI.',
@@ -5404,11 +5563,13 @@ function dlgEditarTarjeta(idx) {
         });
       }},
       {l: t.esTotalera ? '🔄 Cambiar a parcialidades' : '💪 Soy totalera ahora', c: 's', f: function() {
+        if (!exigirEscritura()) return; // modo consulta
         getTarjetas()[idx].esTotalera = !t.esTotalera;
         guardar(); abrirSobre('deudas');
         toast(!t.esTotalera ? '¡Modo totalera activado! 💪' : 'Cambiado a parcialidades');
       }},
       {l: '📊 Corregir CAT', c: 's', f: function() {
+        if (!exigirEscritura()) return; // modo consulta
         dlg({
           e: t.ico, t: 'CAT de ' + t.nom,
           s: 'El Costo Anual Total (CAT) es lo que tu banco reporta como costo total del crédito, incluyendo comisiones. Revísalo en tu estado de cuenta o contrato.',
@@ -5426,6 +5587,7 @@ function dlgEditarTarjeta(idx) {
         });
       }},
       {l: '📈 Corregir tasa de interés', c: 's', f: function() {
+        if (!exigirEscritura()) return; // modo consulta
         dlg({
           e: t.ico, t: 'Tasa de interés de ' + t.nom,
           s: 'La tasa de interés ordinaria (sin comisiones ni seguros) — se usa para calcular cuánto te cobran si no pagas todo. Revísala en tu estado de cuenta.',
@@ -5451,6 +5613,7 @@ function dlgEditarTarjeta(idx) {
 }
 
 function dlgRegistrarConsumo(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var t = getTarjetas()[idx];
   if (!t) return;
   var disponible = (t.limite||0) - (t.saldo||0);
@@ -5480,6 +5643,7 @@ function dlgRegistrarConsumo(idx) {
 }
 
 function dlgAbonarTarjeta(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var t = getTarjetas()[idx];
   if (!t) return;
   var msiLigados = getMSI().filter(function(m) { return m.tarjetaId === t.id && (m.mesesPagados || 0) < m.meses; });
@@ -5519,6 +5683,7 @@ function dlgSeleccionarMSIPago(idx, seleccion) {
 
 // ── Paso final: monto total pagado ──
 function dlgAbonarTarjetaMonto(idx, seleccion) {
+  if (!exigirEscritura()) return; // modo consulta
   var t = getTarjetas()[idx];
   if (!t) return;
   seleccion = seleccion || {};
@@ -5534,7 +5699,6 @@ function dlgAbonarTarjetaMonto(idx, seleccion) {
         var val = parseFloat(v);
         if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); return; }
         if (val < totalMSI) { toast('El total debe ser al menos ' + fmx(totalMSI) + ' (tus mensualidades MSI marcadas)'); return; }
-        if (!isPrem() && E.regs.length>=10) { cerrarDlg(); abrirPremium(); return; }
         var montoRevolvente = val - totalMSI;
         var regId = Date.now();
         // Registrar la parte revolvente como gasto en sobre deudas
@@ -5590,6 +5754,7 @@ function dlgHistorialPagos(idx) {
 }
 
 function dlgCorregirPago(idx, pagoId) {
+  if (!exigirEscritura()) return; // modo consulta
   var t = getTarjetas()[idx];
   if (!t) return;
   var pago = null;
@@ -5636,6 +5801,7 @@ function dlgCorregirPago(idx, pagoId) {
 }
 
 function dlgEliminarTarjeta(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var t = getTarjetas()[idx];
   if (!t) return;
   dlg({
@@ -5851,6 +6017,7 @@ function toggleMSI(i) {
 
 // ── NUEVO MSI ─────────────────────────────────────
 function dlgNuevoMSI() {
+  if (!exigirEscritura()) return; // modo consulta
   var msiData = {};
   // Paso 1: nombre e ícono
   dlg({
@@ -5965,6 +6132,7 @@ function dlgMSIPaso5Tarjeta(msiData) {
 }
 
 function guardarMSI(msiData) {
+  if (!exigirEscritura()) return; // modo consulta
   msiData.id = 'msi_' + Date.now();
   msiData.fechaInicio = new Date().toISOString();
   getMSI().push(msiData);
@@ -5990,6 +6158,7 @@ function elegirIconoMSI(nom) {
 
 // ── REGISTRAR PAGO MSI ────────────────────────────
 function dlgPagarMSI(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var m = getMSI()[idx];
   if (!m) return;
   if (m.tarjetaId) {
@@ -6007,7 +6176,6 @@ function dlgPagarMSI(idx) {
     inf: m.nom + '\nPago: ' + fmx(m.pagoMensual) + '\nMeses restantes: ' + restantes,
     btns: [
       {l: '✓ Confirmar pago ' + fmx(m.pagoMensual), c: 'p', f: function() {
-        if (!isPrem() && E.regs.length>=10) { cerrarDlg(); abrirPremium(); return; }
         // Registrar como gasto
         E.regs.push({
           id: Date.now(), sobre: 'deudas', sub: 'abonos',
@@ -6033,6 +6201,7 @@ function dlgPagarMSI(idx) {
 
 // ── EDITAR MSI ────────────────────────────────────
 function dlgEditarMSI(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var m = getMSI()[idx];
   if (!m) return;
   dlg({
@@ -6095,6 +6264,7 @@ function dlgEditarMSI(idx) {
 
 // ── ELIMINAR MSI ──────────────────────────────────
 function dlgEliminarMSI(idx) {
+  if (!exigirEscritura()) return; // modo consulta
   var m = getMSI()[idx];
   if (!m) return;
   dlg({
@@ -6169,15 +6339,14 @@ function renderMetas(){
   var tabsEl=document.getElementById('metas-tabs');
   var tab=window._metaTab||'sueno';
   var todas=getMetas();
-  var nSueno=0,nFuturo=0,nSuenoCupo=0;
+  var nSueno=0,nFuturo=0;
   for(var k=0;k<todas.length;k++){
     if(todas[k].tipo==='futuro'){ nFuturo++; }
-    else { nSueno++; if(!todas[k].esCumple) nSuenoCupo++; }
+    else { nSueno++; }
   }
   if(tabsEl){
-    var prem=isPrem();
-    var txtSueno = prem ? (nSueno?' ('+nSueno+')':'') : ' ('+nSuenoCupo+'/2)';
-    var txtFuturo = prem ? (nFuturo?' ('+nFuturo+')':'') : ' ('+nFuturo+'/1)';
+    var txtSueno = nSueno?' ('+nSueno+')':'';
+    var txtFuturo = nFuturo?' ('+nFuturo+')':'';
     tabsEl.innerHTML=
       '<div class="meta-tab'+(tab==='sueno'?' on':'')+'" onclick="metaTab(\'sueno\')">🎯 Mis Sueños'+txtSueno+'</div>'+
       '<div class="meta-tab'+(tab==='futuro'?' on futuro':'')+'" onclick="metaTab(\'futuro\')">🪙 Mi Futuro'+txtFuturo+'</div>';
@@ -6221,6 +6390,7 @@ function renderMetas(){
   }).join('');
 }
 function dlgNuevaMeta(tipo){
+  if (!exigirEscritura()) return; // modo consulta
   tipo = tipo==='futuro' ? 'futuro' : 'sueno';
   var esFuturo = tipo==='futuro';
   dlg({e:esFuturo?'🪙':'🎯',t:esFuturo?'Nueva meta de futuro':'Nueva Meta',s:esFuturo?'¿Qué estás asegurando? PPR, Afore, un seguro con ahorro…':'Cuéntame qué quieres lograr',
@@ -6314,23 +6484,17 @@ function dlgMetaCalcFecha(dat){
   });
 }
 function guardarMetaFinal(){
+  if (!exigirEscritura()) return; // modo consulta
   var dat=window._metaDat||{};
   if(!dat.nom)return toast('Error al crear meta — intenta de nuevo');
   if(!E.metas)E.metas=[];
   var tipoNueva = dat.tipo||'sueno';
-  if(!isPrem()){
-    var limSueno=2, limFuturo=1;
-    var nSueno=0, nFuturo=0;
-    for(var k=0;k<E.metas.length;k++){ if(E.metas[k].esCumple)continue; if(E.metas[k].tipo==='futuro')nFuturo++; else nSueno++; }
-    var tope = tipoNueva==='futuro' ? limFuturo : limSueno;
-    var actuales = tipoNueva==='futuro' ? nFuturo : nSueno;
-    if(actuales>=tope){ cerrarDlg(); abrirPremium(); return; }
-  }
   E.metas.push({nom:dat.nom,meta:dat.meta,ico:dat.ico,tipo:tipoNueva,actual:0,aporte:dat.aporte||0,periodo:dat.periodo||'mes',fecha:dat.fecha||''});
   window._metaDat=null;
   guardar();cerrarDlg();renderMetas();toast('¡Meta creada! 🎯');verificarInsignias();
 }
 function dlgAbonarMeta(i){
+  if (!exigirEscritura()) return; // modo consulta
   var mm=E.metas[i];
   var sDesc = mm?(mm.libre? mm.ico+' '+mm.nom+' — '+fmx(mm.actual||0)+' apartado hasta ahora' : mm.ico+' '+mm.nom+' — '+fmx(mm.actual||0)+' de '+fmx(mm.meta)) : '';
   dlg({e:'💰',t:'Abonar a meta',
@@ -6347,11 +6511,11 @@ function dlgAbonarMeta(i){
   });
 }
 function dlgElegirSobreAbono(i, val, nom){
+  if (!exigirEscritura()) return; // modo consulta
   var sobres = todosSobres().filter(function(s){ return !s.esMetas && !s.esAhorro && !s.esTanda && !s.esPr; });
   if(!sobres.length){cerrarDlg();toast('No hay sobres disponibles');return;}
   var btns = sobres.map(function(s){
     return {l:s.ico+' '+s.cor,c:'s',f:function(){
-      if(!isPrem() && E.regs.length>=10){abrirPremium();return;}
       E.metas[i].actual=(E.metas[i].actual||0)+val;
       E.regs.push({id:Date.now(),sobre:s.id,sub:null,mto:val,nota:'Abono a meta: '+nom,fecha:new Date().toISOString()});
       guardar();renderMetas();actualizarUI();renderSobres();
@@ -6366,6 +6530,7 @@ function dlgElegirSobreAbono(i, val, nom){
   });
 }
 function dlgOrigenAbono(i, val){
+  if (!exigirEscritura()) return; // modo consulta
   var nom = E.metas[i] ? E.metas[i].nom : 'meta';
   dlg({e:'🗂️',t:'¿De dónde sale este dinero?',
     s:'Abono de '+fmx(val)+' a '+nom,
@@ -6374,7 +6539,6 @@ function dlgOrigenAbono(i, val){
         dlgElegirSobreAbono(i,val,nom);
       }},
       {l:'💸 Ingreso extra',c:'p',f:function(){
-        if(!isPrem() && E.regs.length>=10){cerrarDlg();abrirPremium();return;}
         E.metas[i].actual=(E.metas[i].actual||0)+val;
         E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,nota:'Ingreso extra → Meta: '+nom,fecha:new Date().toISOString()});
         guardar();cerrarDlg();renderMetas();
@@ -6393,6 +6557,7 @@ function dlgOrigenAbono(i, val){
 
 // ════ INGRESO EXTRA (aguinaldo, proyecto, regalo, etc.) ══════════
 function dlgIngresoExtra(){
+  if (!exigirEscritura()) return; // modo consulta
   dlg({e:'🎁',t:'Te cayó dinero extra',
     s:'Aguinaldo, un proyecto, un regalo… ¿cuánto fue?',
     inp:true,ph:'$ 0.00',md:'decimal',
@@ -6417,11 +6582,11 @@ function dlgDestinoExtra(val){
   });
 }
 function dlgIngresoSobre(val){
+  if (!exigirEscritura()) return; // modo consulta
   var sobres = todosSobres().filter(function(s){ return !s.esMetas && !s.esAhorro && !s.esTanda && !s.esPr; });
   if(!sobres.length){cerrarDlg();toast('No hay sobres disponibles');return;}
   var btns = sobres.map(function(s){
     return {l:s.ico+' '+s.cor,c:'s',f:function(){
-      if(!isPrem() && E.regs.length>=10){cerrarDlg();abrirPremium();return;}
       // Extra TEMPORAL de este mes — nunca se suma al límite base (E.lims)
       // configurado en el wizard, para no inflarlo de forma permanente.
       if (!E.limsExtraMes) E.limsExtraMes = {};
@@ -6439,6 +6604,7 @@ function dlgIngresoSobre(val){
   });
 }
 function dlgIngresoMeta(val){
+  if (!exigirEscritura()) return; // modo consulta
   var metas = getMetas();
   if(!metas.length){
     cerrarDlg();
@@ -6453,7 +6619,6 @@ function dlgIngresoMeta(val){
   }
   var btns = metas.map(function(m,i){
     return {l:(m.ico||'🎯')+' '+m.nom,c:'s',f:function(){
-      if(!isPrem() && E.regs.length>=10){cerrarDlg();abrirPremium();return;}
       m.actual=(m.actual||0)+val;
       E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,nota:'Ingreso extra → Meta: '+m.nom,fecha:new Date().toISOString()});
       guardar();cerrarDlg();renderMetas();
@@ -6469,6 +6634,7 @@ function dlgIngresoMeta(val){
 }
 
 function dlgEditarMeta(i){
+  if (!exigirEscritura()) return; // modo consulta
   var m=E.metas[i];
   dlg({e:'✏️',t:'Editar meta',s:m.ico+' '+m.nom,
     inp:true,ph:m.nom,md:'text',
@@ -6483,6 +6649,7 @@ function dlgEditarMeta(i){
   });
 }
 function dlgEliminarMeta(i){
+  if (!exigirEscritura()) return; // modo consulta
   dlg({e:'🗑',t:'Eliminar meta',
     s:'¿Estás segura? Se perderá todo el progreso de "'+(E.metas[i]?E.metas[i].nom:'')+'".',
     btns:[

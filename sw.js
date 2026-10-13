@@ -41,6 +41,9 @@ self.addEventListener('activate', function (event) {
 // Fetch: primero intenta caché, si no hay, va a la red
 self.addEventListener('fetch', function (event) {
   if (event.request.method !== 'GET') return;
+  // La consulta de hora real de la app (sincronizarHoraReal, "?__hora=") va
+  // siempre directo a la red: nunca se responde ni se guarda en caché.
+  if (event.request.url.indexOf('__hora=') !== -1) return;
 
   event.respondWith(
     caches.match(event.request).then(function (cachedResponse) {
