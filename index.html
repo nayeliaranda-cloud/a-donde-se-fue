@@ -936,7 +936,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     <div class="historia-wrap">
       <div class="historia-tit">
         <span>📚 Mi Historia</span>
-        <button onclick="irA('p-cierre');prepararCierre()" style="background:#C4704F;color:#fff;border:none;border-radius:99px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--fb)">🔒 Cerrar mes</button>
+        <button id="btn-hist-cerrar" onclick="irA('p-cierre');prepararCierre()" style="background:#C4704F;color:#fff;border:none;border-radius:99px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--fb)">🔒 Cerrar mes</button>
       </div>
       <div id="historia-lista"></div>
     </div>
@@ -1044,7 +1044,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <button class="btn-wa" onclick="compartirWhatsApp()">
         <span style="font-size:18px">💬</span> Compartir en WhatsApp
       </button>
-      <button class="btn-cerrar-mes" onclick="confirmarCierre()">
+      <button class="btn-cerrar-mes" id="btn-guardar-cierre" onclick="confirmarCierre()">
         🔒 Guardar en Mi Historia
       </button>
       <button class="btn-no-cerrar" onclick="irA('p-ini')">
@@ -2317,6 +2317,7 @@ function abrirModalEdicionTransaccion(id) {
   var r = null;
   for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === id) { r = E.regs[i]; break; } }
   if (!r) return;
+  if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
   dlg({
     e:'✏️', t:'Editar monto',
     inf: '📝 ' + (r.nota || 'Sin nota') + '\nMonto actual: ' + fmx(r.mto),
@@ -2355,6 +2356,7 @@ function dlgEliminarTransaccion(id) {
   var r = null;
   for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === id) { r = E.regs[i]; break; } }
   if (!r) return;
+  if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
   dlg({
     e:'🗑', t:'Eliminar transacción',
     s:'¿Eliminar "' + (r.nota || 'esta transacción') + '" por ' + fmx(r.mto) + '? No se puede deshacer.',
@@ -2388,7 +2390,7 @@ function guardarGasto() {
   var mto = parseFloat(document.getElementById('frm-m').value);
   var nota = document.getElementById('frm-n').value.trim();
   if (!mto || mto <= 0) { toast('Escribe el monto del gasto 💸'); return; }
-  E.regs.push({id:Date.now(), sobre:E.sobreA, sub:E.subA, mto:mto, nota:nota, fecha:new Date().toISOString()});
+  E.regs.push({id:Date.now(), sobre:E.sobreA, sub:E.subA, mto:mto, nota:nota, periodo: periodoActual(), fecha:new Date().toISOString()});
   contReg();
   guardar();
   var lim = limEfectivo(E.sobreA);
@@ -2400,7 +2402,11 @@ function guardarGasto() {
   actualizarUI(); renderSobres();
   document.getElementById('frm-m').value = '';
   document.getElementById('frm-n').value = '';
-  toast('¡Registrado! 🎉');
+  if (mesCalendarioCerrado()) {
+    toast(MESES_NOM[new Date().getMonth()] + ' ya está cerrado; este gasto se registra en ' + ymNombre(periodoActual()).toLowerCase());
+  } else {
+    toast('¡Registrado! \uD83C\uDF89');
+  }
 }
 
 function contReg() {
@@ -2458,9 +2464,18 @@ function pagadoEstePeriodo(srv) {
   return !!srv.vencCubierto && srv.vencCubierto === fechaVencActual(srv);
 }
 
-// Solo pagos de este periodo marcados con la versión que guarda los datos de deshacer.
+// Solo pagos de este periodo marcados con la versión que guarda los datos de
+// deshacer, y que no hayan quedado en un mes ya cerrado.
 function puedeDeshacerPago(srv) {
-  return pagadoEstePeriodo(srv) && (srv.regIdPago !== undefined || srv.pagoPrevio !== undefined);
+  return pagadoEstePeriodo(srv) && (srv.regIdPago !== undefined || srv.pagoPrevio !== undefined) &&
+    !mesEstaCerrado(periodoPagoSrv(srv));
+}
+// Mes al que pertenece el pago marcado de un servicio.
+function periodoPagoSrv(srv) {
+  if (srv.regIdPago !== null && srv.regIdPago !== undefined) {
+    for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === srv.regIdPago) return periodoDe(E.regs[i]); }
+  }
+  return srv.pagoPeriodo || (srv.ultimoPago ? ymDe(srv.ultimoPago) : '');
 }
 
 function colorSrv(dias) {
@@ -2649,13 +2664,14 @@ function marcarPagado(idx) {
           else if(nomL.match(/seguro|tenencia/)) subSrv = 'limpieza';
           else if(nomL.match(/colegio|escuela|cuota/)) subSrv = 'renta';
           regId = Date.now();
-          E.regs.push({id:regId,sobre:'casa',sub:subSrv,mto:s.mto,nota:s.nom+' — pago programado',fecha:new Date().toISOString()});
+          E.regs.push({id:regId,sobre:'casa',sub:subSrv,mto:s.mto,nota:s.nom+' — pago programado',periodo: periodoActual(), fecha:new Date().toISOString()});
         }
         // Datos para poder deshacer (ver desmarcarPagado)
         E.servicios[idx].pagoPrevio = E.servicios[idx].ultimoPago || null;
         E.servicios[idx].regIdPago = regId;
         E.servicios[idx].vencCubierto = fechaVencActual(s);
         E.servicios[idx].ultimoPago = new Date().toISOString();
+        E.servicios[idx].pagoPeriodo = periodoActual();
         guardar(); actualizarUI(); abrirSobre('casa');
         toast('¡'+s.nom+' pagado!'+(s.mto>0?' '+fmx(s.mto)+' registrado':'')+' ✓');
       }},
@@ -2668,6 +2684,8 @@ function desmarcarPagado(idx) {
   if (!exigirEscritura()) return; // modo consulta
   var s = (E.servicios||[])[idx];
   if (!s) return;
+  var perPago = periodoPagoSrv(s);
+  if (mesEstaCerrado(perPago)) { avisoMesCerrado(perPago); return; }
   var reg = null;
   if (s.regIdPago !== null && s.regIdPago !== undefined) {
     for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === s.regIdPago) { reg = E.regs[i]; break; } }
@@ -2682,6 +2700,7 @@ function desmarcarPagado(idx) {
         delete s.pagoPrevio;
         delete s.regIdPago;
         delete s.vencCubierto;
+        delete s.pagoPeriodo;
         guardar(); actualizarUI(); abrirSobre('casa');
         toast('Pago de '+s.nom+' deshecho');
       }},
@@ -2797,8 +2816,7 @@ function renderAhorroSobre(cont) {
   var hoy = new Date();
   var ahorradoMes = E.regs.filter(function(r) {
     if (r.sobre !== 'ahorro') return false;
-    var f = new Date(r.fecha);
-    return f.getMonth() === hoy.getMonth() && f.getFullYear() === hoy.getFullYear();
+    return periodoDe(r) === periodoActual();
   }).reduce(function(s, r) { return s + r.mto; }, 0);
 
   var pct = sugerido > 0 ? Math.min(100, Math.round(ahorradoMes / sugerido * 100)) : 0;
@@ -2847,8 +2865,7 @@ function renderAhorroSobre(cont) {
   // Historial del mes
   var regsAhorro = E.regs.filter(function(r) {
     if (r.sobre !== 'ahorro') return false;
-    var f = new Date(r.fecha);
-    return f.getMonth() === hoy.getMonth() && f.getFullYear() === hoy.getFullYear();
+    return periodoDe(r) === periodoActual();
   }).slice(-5).reverse();
 
   if (regsAhorro.length) {
@@ -2890,7 +2907,7 @@ function rapRegistrarAhorro() {
       {l:'Guardar ahorro',c:'p',f:function(v){
         var val=parseFloat(v);
         if(!val||val<=0)return toast('Ingresa un monto válido');
-        E.regs.push({id:Date.now(),sobre:'ahorro',sub:'libre',mto:val,nota:'Ahorro',fecha:new Date().toISOString()});
+        E.regs.push({id:Date.now(),sobre:'ahorro',sub:'libre',mto:val,nota:'Ahorro',periodo: periodoActual(), fecha:new Date().toISOString()});
         contReg(); guardar(); actualizarUI(); renderSobres();
         abrirSobre('ahorro');
         toast('💰 +' + fmx(val) + ' ahorrado — ¡bien hecho!');
@@ -3188,7 +3205,7 @@ function dlgPagoTanda(idx) {
         if(!t.pgs)t.pgs=[];
         t.pgs.push({sem:pgs+1,fecha:new Date().toISOString(),mto:t.mto});
         if(!esCobro){
-          E.regs.push({id:Date.now(),sobre:'tanda',sub:null,mto:t.mto,nota:'Tanda: '+t.nom+' — semana '+(pgs+1),fecha:new Date().toISOString()});
+          E.regs.push({id:Date.now(),sobre:'tanda',sub:null,mto:t.mto,nota:'Tanda: '+t.nom+' — semana '+(pgs+1),periodo: periodoActual(), fecha:new Date().toISOString()});
         }
         guardar();abrirSobre('tanda');actualizarUI();
         if(esCobro)toast('¡Esta semana cobras '+fmx(t.mto*t.part)+'! 🎉 (no se descuenta de tu presupuesto)');
@@ -3289,10 +3306,12 @@ function abrirRincon() {
 function calcGastoPorSemana(mes, anio) {
   // Devuelve array de 4 semanas con gasto real del mes
   var semanas = [0, 0, 0, 0];
+  var ym = ymDeNum(anio*12 + mes);
   E.regs.forEach(function(r) {
+    if (periodoDe(r) !== ym) return;
     var f = new Date(r.fecha);
-    if (f.getMonth() !== mes || f.getFullYear() !== anio) return;
-    var dia = f.getDate();
+    // Gasto de antes del día 1 (registrado tras un cierre anticipado): semana 1
+    var dia = (f.getMonth() === mes && f.getFullYear() === anio) ? f.getDate() : 1;
     var idx = dia <= 7 ? 0 : dia <= 14 ? 1 : dia <= 21 ? 2 : 3;
     semanas[idx] += r.mto;
   });
@@ -3327,7 +3346,8 @@ function renderReportes() {
 
   var gb = document.getElementById('grf-bars');
   if (gb) {
-    var semGastos = calcGastoPorSemana(hoy.getMonth(), hoy.getFullYear());
+    var nPer = ymNum(periodoActual());
+    var semGastos = calcGastoPorSemana(nPer % 12, Math.floor(nPer / 12));
     var maxG = Math.max.apply(null, semGastos.concat([mto/4||1]));
     var ingSem = mto > 0 ? Math.round(mto / 4) : 0;
     gb.innerHTML = ['Sem 1','Sem 2','Sem 3','Sem 4'].map(function(lbl, i) {
@@ -3666,10 +3686,53 @@ function initSwipe(id){
 }
 
 // ════ CÁLCULOS ═══════════════════════════════════
-function calcGT(){return E.regs.filter(function(r){return esMes(r.fecha);}).reduce(function(s,r){return s+(Number(r.mto)||0);},0);}
-function calcGS(id){return E.regs.filter(function(r){return r.sobre===id&&esMes(r.fecha);}).reduce(function(s,r){return s+(Number(r.mto)||0);},0);}
-function calcGSS(sid,ssid){return E.regs.filter(function(r){return r.sobre===sid&&r.sub===ssid&&esMes(r.fecha);}).reduce(function(s,r){return s+(Number(r.mto)||0);},0);}
-function esMes(f){if(!f)return false;var d=new Date(f),h=new Date();return d.getMonth()===h.getMonth()&&d.getFullYear()===h.getFullYear();}
+function calcGT(){var p=periodoActual();return E.regs.filter(function(r){return periodoDe(r)===p;}).reduce(function(s,r){return s+(Number(r.mto)||0);},0);}
+function calcGS(id){var p=periodoActual();return E.regs.filter(function(r){return r.sobre===id&&periodoDe(r)===p;}).reduce(function(s,r){return s+(Number(r.mto)||0);},0);}
+function calcGSS(sid,ssid){var p=periodoActual();return E.regs.filter(function(r){return r.sobre===sid&&r.sub===ssid&&periodoDe(r)===p;}).reduce(function(s,r){return s+(Number(r.mto)||0);},0);}
+
+// ── PERIODO CONTABLE ("YYYY-MM") ──
+// Cada registro nuevo guarda el mes al que pertenece (r.periodo), que puede
+// ser distinto de su fecha real: si el mes del calendario ya se cerró (cierre
+// anticipado), lo nuevo cuenta para el mes siguiente. Los registros viejos
+// sin periodo usan su fecha (sin migración).
+function ymDe(f){var d=new Date(f);return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2);}
+function ymNum(ym){var p=String(ym||'').split('-');var a=parseInt(p[0],10),m=parseInt(p[1],10);return (isNaN(a)||isNaN(m))?NaN:a*12+m-1;}
+function ymDeNum(n){return Math.floor(n/12)+'-'+('0'+(n%12+1)).slice(-2);}
+function ymSig(ym){return ymDeNum(ymNum(ym)+1);}
+function ymNombre(ym){return MESES_NOM[ymNum(ym)%12];}
+// Último mes cerrado: E.mesCerrado o el más reciente de Mi Historia (cubre
+// los cierres hechos con versiones anteriores, que no guardaban mesCerrado).
+function ultimoMesCerradoNum(){
+  var n = ymNum(E.mesCerrado);
+  (E.historial||[]).forEach(function(h){
+    var hn = h.anio*12 + h.mesIdx;
+    if (!isNaN(hn) && (isNaN(n) || hn > n)) n = hn;
+  });
+  return n;
+}
+function mesEstaCerrado(ym){
+  var n = ymNum(ym);
+  if (isNaN(n)) return false;
+  if (ymNum(E.mesCerrado) === n) return true;
+  return (E.historial||[]).some(function(h){ return h.anio*12 + h.mesIdx === n; });
+}
+// Mes al que van los registros de hoy: el del calendario, o el siguiente al
+// último cerrado si ese ya se cerró (nunca regresa a un mes cerrado).
+function periodoActual(){
+  var cal = ymDe(new Date());
+  var u = ultimoMesCerradoNum();
+  return (!isNaN(u) && u >= ymNum(cal)) ? ymDeNum(u+1) : cal;
+}
+// ¿El mes del calendario ya se cerró (cierre anticipado)?
+function mesCalendarioCerrado(){ return ymNum(periodoActual()) > ymNum(ymDe(new Date())); }
+function periodoDe(r){ return r.periodo || (r.fecha ? ymDe(r.fecha) : ''); }
+// Un mes cerrado no cambia: ni su resumen en Mi Historia ni el arrastre.
+function avisoMesCerrado(ym){
+  dlg({e:'\uD83D\uDD12', t:ymNombre(ym) + ' ya está cerrado',
+    s:'Este movimiento ya forma parte del resumen de ' + ymNombre(ym) + ' en Mi Historia, así que no se puede cambiar.',
+    btns:[{l:'Entendido', c:'p', f:null}]
+  });
+}
 // Límite "efectivo" de un sobre este mes: su límite base (E.lims, lo que la
 // usuaria configuró) + el extra temporal de ESTE mes (E.limsExtraMes), si lo
 // hay. El extra nunca se suma a E.lims de forma permanente — ver dlgIngresoSobre().
@@ -4126,6 +4189,12 @@ var MENSAJES_NEG = [
 
 // ── PREPARAR PANTALLA DE CIERRE ───────────────────
 function prepararCierre() {
+  if (mesCalendarioCerrado()) {
+    toast(MESES_NOM[new Date().getMonth()] + ' ya está en Mi Historia');
+    irMiHistoria();
+    return;
+  }
+  actualizarBotonesCierre();
   var hoy = new Date();
   var mesIdx = hoy.getMonth();
   var anio = hoy.getFullYear();
@@ -4204,8 +4273,10 @@ function prepararCierre() {
   var historial = E.historial || [];
   var compEl = document.getElementById('cierre-comparativo');
   if (compEl) {
-    if (historial.length > 0) {
-      var anterior = historial[historial.length - 1];
+    // Contra el mes inmediato anterior (Mi Historia guarda el más nuevo primero)
+    var anterior = null;
+    historial.forEach(function(h) { if (h.anio*12 + h.mesIdx === anio*12 + mesIdx - 1) anterior = h; });
+    if (anterior) {
       var difGasto = gasto - anterior.gasto;
       var difPct = anterior.gasto > 0
         ? Math.abs(Math.round((difGasto/anterior.gasto)*100))
@@ -4217,9 +4288,11 @@ function prepararCierre() {
           ? '✅ Gastaste ' + fmx(Math.abs(difGasto)) + ' menos (' + difPct + '% menos) — ¡mejoraste!'
           : '⚠️ Gastaste ' + fmx(difGasto) + ' más (' + difPct + '% más) que el mes pasado');
       compEl.style.display = 'block';
-    } else {
+    } else if (!historial.length) {
       compEl.innerHTML = '📌 Este es tu primer cierre mensual — ¡el comienzo de tu historia! 🌟';
       compEl.style.display = 'block';
+    } else {
+      compEl.style.display = 'none'; // no hay cierre del mes anterior para comparar
     }
   }
 
@@ -4233,11 +4306,8 @@ function prepararCierre() {
 // de esMes()/calcGT()/calcGS(), que siempre comparan contra la fecha actual).
 // Necesario para poder archivar un mes que ya quedó atrás (ver chkNuevoMes()).
 function regsDeMes(mesIdx, anio) {
-  return E.regs.filter(function(r) {
-    if (!r.fecha) return false;
-    var f = new Date(r.fecha);
-    return f.getMonth() === mesIdx && f.getFullYear() === anio;
-  });
+  var ym = ymDeNum(anio*12 + mesIdx);
+  return E.regs.filter(function(r) { return periodoDe(r) === ym; });
 }
 function calcGTMes(mesIdx, anio) {
   return regsDeMes(mesIdx, anio).reduce(function(s, r) { return s + (Number(r.mto)||0); }, 0);
@@ -4252,6 +4322,12 @@ function calcGSMes(id, mesIdx, anio) {
 // rastro en Mi Historia — antes solo confirmarCierre() lo hacía, y E.regs
 // crecía sin límite si la usuaria nunca tocaba "Cerrar mes" a mano.
 function archivarMes(mesIdx, anio, mto) {
+  // Un mes que ya está en Mi Historia nunca se vuelve a archivar: no se
+  // duplica, no se sobrescribe y no se borran registros.
+  var previo = null;
+  (E.historial||[]).forEach(function(h) { if (h.mesIdx === mesIdx && h.anio === anio) previo = h; });
+  if (previo) return previo;
+  var ym = ymDeNum(anio*12 + mesIdx);
   var nomMes = MESES_NOM[mesIdx] + ' ' + anio;
   var gasto = calcGTMes(mesIdx, anio);
   var dif = mto - gasto;
@@ -4272,24 +4348,48 @@ function archivarMes(mesIdx, anio, mto) {
     racha: (E.gamif && E.gamif.racha) || 0
   };
   if (!E.historial) E.historial = [];
-  E.historial = E.historial.filter(function(h) {
-    return !(h.mesIdx === mesIdx && h.anio === anio);
-  });
   E.historial.unshift(snapshot);
   if (E.historial.length > 12) E.historial = E.historial.slice(0, 12);
-  E.regs = E.regs.filter(function(r) {
-    if (!r.fecha) return false;
-    var f = new Date(r.fecha);
-    return !(f.getMonth() === mesIdx && f.getFullYear() === anio);
-  });
+  E.regs = E.regs.filter(function(r) { return periodoDe(r) !== ym; });
+  if (isNaN(ymNum(E.mesCerrado)) || ymNum(E.mesCerrado) < ymNum(ym)) E.mesCerrado = ym;
   return snapshot;
 }
 
+// Registros sin periodo cuya fecha cae en un mes que ya está en Mi Historia:
+// se crearon después de cerrarlo (cerrar borra los registros del mes), así
+// que pertenecen al mes siguiente. Pasa con cierres de versiones anteriores.
+function normalizarPeriodos() {
+  var cambio = false;
+  E.regs.forEach(function(r) {
+    if (r.periodo || !r.fecha) return;
+    var ym = ymDe(r.fecha);
+    if (!mesEstaCerrado(ym)) return;
+    while (mesEstaCerrado(ym)) ym = ymSig(ym);
+    r.periodo = ym;
+    cambio = true;
+  });
+  return cambio;
+}
+
+// Lleva a Mi Historia (en Reportes), donde queda el mes recién cerrado.
+function irMiHistoria() {
+  irA('p-rep');
+  var h = document.querySelector('#p-rep .historia-wrap');
+  if (h && h.scrollIntoView) h.scrollIntoView();
+}
+
 function confirmarCierre() {
-  var hoy = new Date();
-  var mesIdx = hoy.getMonth();
-  var anio = hoy.getFullYear();
+  // Un mes cerrado no se vuelve a cerrar.
+  if (mesCalendarioCerrado()) {
+    toast(MESES_NOM[new Date().getMonth()] + ' ya está en Mi Historia');
+    irMiHistoria();
+    return;
+  }
+  var nPer = ymNum(periodoActual());
+  var mesIdx = nPer % 12;
+  var anio = Math.floor(nPer / 12);
   var nomMes = MESES_NOM[mesIdx] + ' ' + anio;
+  var nomSig = MESES_NOM[(mesIdx+1)%12];
   // Mismo cálculo que "Disponible" en Inicio (actualizarUI): incluye arrastre
   // del mes anterior e ingresos extra ya asignados este mes — así el número
   // que se comparte/guarda en Mi Historia coincide con lo que se vio todo el mes.
@@ -4308,49 +4408,48 @@ function confirmarCierre() {
   // también se limpia — el límite base (E.lims) NUNCA se tocó, así que no hay
   // nada que "revertir" ahí.
   E.limsExtraMes = {};
+  // Regla de arrastre (igual que el cierre automático de chkNuevoMes): el
+  // sobrante o el déficit pasan al mes siguiente DESDE YA. Solo cambia si la
+  // usuaria elige otra opción (meta o fondo); cerrar el diálogo lo conserva.
+  E.saldoArrastrado = dif;
+  E.tipoArrastre = dif > 0 ? 'positivo' : dif < 0 ? 'negativo' : null;
   guardar();
   verificarInsignias();
+  actualizarUI(); renderSobres();
+  irMiHistoria();
 
   // ── PREGUNTAR QUÉ HACER CON EL SALDO ──────────────
   setTimeout(function() {
     if (pos && dif > 0 && !puedeEscribir()) {
-      // Modo consulta: archivar sí; mover dinero a metas no. El sobrante se
-      // arrastra solo al mes siguiente.
-      E.saldoArrastrado = dif;
-      E.tipoArrastre = 'positivo';
-      guardar();
+      // Modo consulta: archivar sí; mover dinero a metas no. El sobrante ya
+      // se arrastró al mes siguiente.
       dlg({
-        e: '\uD83C\uDF89', t: '¡Cerraste en positivo!',
-        s: 'Te sobró ' + fmx(dif) + ' en ' + nomMes + '. Lo pasamos como saldo inicial de ' + MESES_NOM[(mesIdx+1)%12] + '.',
+        e: '🎉', t: '¡Cerraste en positivo!',
+        s: 'Te sobró ' + fmx(dif) + ' en ' + nomMes + '. Lo pasamos como saldo inicial de ' + nomSig + '.',
         btns: [
           {l: '\uD83D\uDCAC Enviar resumen', c: 'p', f: function() { dlgOpcionesEnvio(snapshot); }},
-          {l: 'Entendido', c: 's', f: function() { actualizarUI(); renderSobres(); }}
+          {l: 'Entendido', c: 's', f: null}
         ]
       });
     } else if (pos && dif > 0) {
-      // CASO A: Sobró dinero — mostrar opciones
+      // CASO A: Sobró dinero — ya está como saldo inicial; se ofrecen opciones
       dlg({
-        e: '🎉', t: '¡Cerraste en positivo!',
-        s: 'Te sobró ' + fmx(dif) + ' en ' + nomMes + '. ¿Qué hacemos con ese dinero?',
+        e: '\uD83C\uDF89', t: '¡Cerraste en positivo!',
+        s: 'Te sobró ' + fmx(dif) + ' en ' + nomMes + '. Lo pasamos como saldo inicial de ' + nomSig + ', o puedes llevarlo a una meta.',
         btns: [
-          {l: '➕ Saldo inicial del mes nuevo', c: 'p', f: function() {
-            E.saldoArrastrado = dif;
-            E.tipoArrastre = 'positivo';
-            guardar(); cerrarDlg();
-            toast('✅ ' + fmx(dif) + ' arrancan el mes nuevo 🌿');
-            actualizarUI(); renderSobres();
+          {l: '\u2795 Saldo inicial de ' + nomSig, c: 'p', f: function() {
+            toast('\u2705 ' + fmx(dif) + ' arrancan ' + nomSig + ' \uD83C\uDF3F');
             setTimeout(function(){ dlgOpcionesEnvio(snapshot); }, 500);
           }},
           {l: '🎯 Abonarlo a una meta', c: 's', f: function() {
-            cerrarDlg();
-            var mts = getMetas();
-            if (!mts.length) { toast('Crea una meta primero'); return; }
-            // Abrir selector de meta
+            if (!getMetas().length) {
+              toast('Aún no tienes metas; los ' + fmx(dif) + ' pasan como saldo inicial de ' + nomSig);
+              setTimeout(function(){ dlgOpcionesEnvio(snapshot); }, 500);
+              return;
+            }
             dlgAbonarSobrante(dif, snapshot);
           }},
           {l: '🛡️ Al fondo de emergencias', c: 's', f: function() {
-            // Buscar sobre de emergencias o ahorro
-            E.saldoArrastrado = 0;
             var metaEmerg = null;
             var mtsAll = getMetas();
             for (var mi = 0; mi < mtsAll.length; mi++) {
@@ -4359,49 +4458,66 @@ function confirmarCierre() {
                 metaEmerg = mtsAll[mi]; break;
               }
             }
-            if (metaEmerg) {
-              metaEmerg.actual = (metaEmerg.actual||0) + dif;
-              guardar();
-              toast('🛡️ ' + fmx(dif) + ' → Fondo de emergencias');
-            } else {
-              E.saldoArrastrado = dif;
-              E.tipoArrastre = 'positivo';
-              guardar();
-              toast('🛡️ ' + fmx(dif) + ' guardado como ahorro');
-            }
-            cerrarDlg(); actualizarUI(); renderSobres();
+            if (!metaEmerg) { dlgCrearFondoSobrante(dif, snapshot); return; }
+            metaEmerg.actual = (metaEmerg.actual||0) + dif;
+            E.saldoArrastrado = 0;
+            E.tipoArrastre = null;
+            guardar(); actualizarUI(); renderSobres();
+            toast('\uD83D\uDEE1\uFE0F ' + fmx(dif) + ' → ' + metaEmerg.nom);
             setTimeout(function(){ dlgOpcionesEnvio(snapshot); }, 500);
           }},
           {l: '💬 Enviar resumen primero', c: 's', f: function() {
-            E.saldoArrastrado = dif;
-            E.tipoArrastre = 'positivo';
-            guardar(); cerrarDlg();
             dlgOpcionesEnvio(snapshot);
           }}
         ]
       });
     } else if (!pos && dif < 0) {
-      // CASO B: Se pasó — déficit se arrastra automáticamente
-      E.saldoArrastrado = dif; // negativo
-      E.tipoArrastre = 'negativo';
-      guardar();
+      // CASO B: Se pasó — el déficit ya se arrastró al mes siguiente
       dlg({
         e: '⚠️', t: 'Mes cerrado',
-        s: 'Te pasaste ' + fmx(Math.abs(dif)) + ' en ' + nomMes + '. Ese monto se descuenta del disponible de ' + MESES_NOM[(mesIdx+1)%12] + '.',
+        s: 'Te pasaste ' + fmx(Math.abs(dif)) + ' en ' + nomMes + '. Ese monto se descuenta del disponible de ' + nomSig + '.',
         btns: [
-          {l: '💬 Enviar resumen', c: 'p', f: function() { cerrarDlg(); dlgOpcionesEnvio(snapshot); }},
-          {l: 'Entendido', c: 's', f: function() { cerrarDlg(); actualizarUI(); renderSobres(); }}
+          {l: '\uD83D\uDCAC Enviar resumen', c: 'p', f: function() { dlgOpcionesEnvio(snapshot); }},
+          {l: 'Entendido', c: 's', f: null}
         ]
       });
     } else {
       // CASO C: Exacto — ni sobró ni faltó
-      E.saldoArrastrado = 0;
-      guardar();
       dlgOpcionesEnvio(snapshot);
     }
   }, 400);
+}
 
-  actualizarUI(); renderSobres();
+// Sobrante del cierre → Fondo de emergencias, cuando aún no existe esa meta.
+// Objetivo sugerido: 3 meses de lo que salió en el mes cerrado (si salió $0,
+// 3 meses de ingreso); la usuaria lo puede cambiar antes de crearla. Si no la
+// crea (o cierra el diálogo), el sobrante se queda como saldo inicial.
+function dlgCrearFondoSobrante(monto, snapshot) {
+  var nomSig = MESES_NOM[(snapshot.mesIdx+1)%12];
+  var base = snapshot.gasto > 0 ? snapshot.gasto : (E.perfil.mto || 0);
+  var sugerido = Math.round(base * 3);
+  dlg({e:'\uD83D\uDEE1\uFE0F', t:'¿Creamos tu Fondo de emergencias?',
+    s:'Aún no tienes esa meta. La creamos con los ' + fmx(monto) + ' que te sobraron. ' +
+      'Objetivo sugerido: 3 meses de tus gastos (' + fmx(sugerido) + '). Puedes cambiarlo.',
+    inp:true, ph:'Objetivo del fondo', md:'decimal', val:sugerido || '',
+    btns:[
+      {l:'Crear con ' + fmx(monto), c:'p', f:function(v) {
+        var obj = Math.round((parseFloat(v) || 0) * 100) / 100;
+        if (obj <= 0) { toast('Escribe el objetivo de tu fondo'); dlgCrearFondoSobrante(monto, snapshot); return; }
+        if (!E.metas) E.metas = [];
+        E.metas.push({nom:'Fondo de emergencias', meta:obj, ico:'\uD83D\uDEE1\uFE0F', tipo:'futuro', actual:monto, aporte:0, periodo:'mes', fecha:''});
+        E.saldoArrastrado = 0;
+        E.tipoArrastre = null;
+        guardar(); actualizarUI(); renderSobres();
+        toast('\uD83D\uDEE1\uFE0F Creamos tu Fondo de emergencias con ' + fmx(monto));
+        setTimeout(function(){ dlgOpcionesEnvio(snapshot); }, 500);
+      }},
+      {l:'No, pasarlo a ' + nomSig, c:'s', f:function() {
+        toast('Los ' + fmx(monto) + ' pasan como saldo inicial de ' + nomSig + ' (no se creó ninguna meta)');
+        setTimeout(function(){ dlgOpcionesEnvio(snapshot); }, 500);
+      }}
+    ]
+  });
 }
 
 function dlgOpcionesEnvio(snapshot) {
@@ -4428,12 +4544,16 @@ function dlgAbonarSobrante(monto, snapshot) {
       return {l: m.ico + ' ' + m.nom + ' — ' + fmx(m.actual||0) + '/' + fmx(m.meta), c: 's', f: function() {
         m.actual = (m.actual||0) + monto;
         E.saldoArrastrado = 0;
+        E.tipoArrastre = null;
         guardar(); cerrarDlg();
         toast('🎯 ' + fmx(monto) + ' → ' + m.nom + ' ✅');
         actualizarUI(); renderSobres();
         setTimeout(function(){ dlgOpcionesEnvio(snapshot); }, 500);
       }};
-    }).concat([{l: 'Cancelar', c: 's', f: cerrarDlg}])
+    }).concat([{l: 'Cancelar', c: 's', f: function() {
+      // Cancelar (o cerrar el diálogo) deja el sobrante como saldo inicial.
+      toast('Los ' + fmx(monto) + ' pasan como saldo inicial de ' + MESES_NOM[(snapshot.mesIdx+1)%12]);
+    }}])
   });
 }
 
@@ -4856,11 +4976,12 @@ function compartirWhatsApp() {
 
 // ── BANNER CIERRE EN INICIO ───────────────────────
 function chkBannerCierre() {
+  actualizarBotonesCierre();
   var dia = new Date().getDate();
   var ban = document.getElementById('ban-cierre');
   if (!ban) return;
 
-  if (dia >= 25) {
+  if (dia >= 25 && !mesCalendarioCerrado()) {
     var hoy = new Date();
     var nomMes = MESES_NOM[hoy.getMonth()];
     var diasRest = new Date(hoy.getFullYear(), hoy.getMonth()+1, 0).getDate() - dia;
@@ -4876,8 +4997,24 @@ function chkBannerCierre() {
   }
 }
 
+// Con el mes ya cerrado, los botones de cierre se deshabilitan.
+function actualizarBotonesCierre() {
+  var cerrado = mesCalendarioCerrado();
+  var nom = MESES_NOM[new Date().getMonth()];
+  [['btn-hist-cerrar', '\uD83D\uDD12 Cerrar mes', '\u2713 ' + nom + ' cerrado'],
+   ['btn-guardar-cierre', '\uD83D\uDD12 Guardar en Mi Historia', '\u2713 ' + nom + ' ya está en Mi Historia']].forEach(function(b) {
+    var el = document.getElementById(b[0]);
+    if (!el) return;
+    el.disabled = cerrado;
+    el.textContent = cerrado ? b[2] : b[1];
+    el.style.opacity = cerrado ? '.6' : '';
+    el.style.cursor = cerrado ? 'default' : 'pointer';
+  });
+}
+
 // ── RENDER MI HISTORIA EN REPORTES ───────────────
 function renderHistoria() {
+  actualizarBotonesCierre();
   var el = document.getElementById('historia-lista');
   if (!el) return;
   var hist = E.historial || [];
@@ -4986,6 +5123,10 @@ function dlgVerArrastre() {
 }
 
 function chkNuevoMes() {
+  if (normalizarPeriodos()) {
+    guardar();
+    setTimeout(function() { actualizarUI(); renderSobres(); }, 0);
+  }
   var hoy = new Date();
   var mesActual = hoy.getFullYear() + '-' + (hoy.getMonth()+1);
   var ultimoReset = E.ultimoReset || '';
@@ -5001,72 +5142,65 @@ function chkNuevoMes() {
   // Comparación cronológica (año*12+mes), no de igualdad de string: si la
   // fecha del sistema retrocede a un mes ya cerrado, no hay que volver a
   // preguntar ni re-archivar ese mes.
-  var partesReset = ultimoReset.split('-');
-  var anioCerrado = parseInt(partesReset[0], 10);
-  var mesIdxCerrado = parseInt(partesReset[1], 10) - 1;
-  var ultimoResetNum = anioCerrado * 12 + mesIdxCerrado;
+  var ultimoResetNum = ymNum(ultimoReset);
   var mesActualNum = hoy.getFullYear() * 12 + hoy.getMonth();
   if (isNaN(ultimoResetNum) || mesActualNum <= ultimoResetNum) return; // ya se preguntó/cerró este mes, o la fecha del sistema retrocedió
   // Ya pasó al menos un mes desde el último registro — sin importar qué día
   // del mes sea hoy (puede ser el 1, el 5, el 15...), hay que preguntar.
 
-  // Datos del mes que se está dejando atrás, ANTES de tocar nada — para poder
-  // archivarlo a Mi Historia igual que hace el botón manual "Cerrar mes"
-  // (confirmarCierre()). Sin esto, E.regs crecía sin límite si la usuaria
-  // nunca cerraba el mes a mano.
-  var mtoCerrado = (E.perfil.mto || 0) + (E.saldoArrastrado || 0) + (E.ingresoExtraMes || 0);
-
+  // Mes que queda atrás y sigue abierto. Si ya se cerró a mano (cierre
+  // anticipado), no se vuelve a archivar ni se toca el arrastre ni el ingreso
+  // extra: lo registrado después del cierre ya cuenta para este mes.
+  var nCerrar = ultimoResetNum;
+  while (nCerrar < mesActualNum && mesEstaCerrado(ymDeNum(nCerrar))) nCerrar++;
   var nomMes = MESES_NOM[hoy.getMonth()];
-  // Modo consulta: el cambio de mes y el archivo en Mi Historia siguen
-  // funcionando (igual que "Mismo monto que antes"), sin pedir monto nuevo.
-  if (!puedeEscribir()) {
-    if (!isNaN(mesIdxCerrado) && !isNaN(anioCerrado)) archivarMes(mesIdxCerrado, anioCerrado, mtoCerrado);
-    E.ultimoReset = mesActual;
-    E.saldoArrastrado = 0;
-    E.tipoArrastre = null;
+  var resumen = '';
+  if (nCerrar < mesActualNum) {
+    // No se cerró a mano: se cierra solo, con la misma regla de arrastre que
+    // el cierre manual (sobrante o déficit pasan al mes siguiente).
+    var mtoCerrado = (E.perfil.mto || 0) + (E.saldoArrastrado || 0) + (E.ingresoExtraMes || 0);
+    var nomCerrado = MESES_NOM[nCerrar % 12];
+    var snap = archivarMes(nCerrar % 12, Math.floor(nCerrar / 12), mtoCerrado);
+    E.saldoArrastrado = snap.dif;
+    E.tipoArrastre = snap.dif > 0 ? 'positivo' : snap.dif < 0 ? 'negativo' : null;
     E.ingresoExtraMes = 0;
     E.limsExtraMes = {};
-    guardar();
-    var nomCerrado = isNaN(mesIdxCerrado) ? '' : MESES_NOM[mesIdxCerrado] + ' ';
-    setTimeout(function() {
-      actualizarUI(); renderSobres();
-      toast('\uD83D\uDCDA Guardamos ' + nomCerrado + 'en Mi Historia');
-    }, 600);
+    resumen = 'Guardamos ' + nomCerrado + ' en Mi Historia. ' +
+      (snap.dif > 0 ? 'Te sobró ' + fmx(snap.dif) + ': pasa como saldo inicial de ' + nomMes + '. '
+        : snap.dif < 0 ? 'Te pasaste ' + fmx(Math.abs(snap.dif)) + ': se descuenta de ' + nomMes + '. '
+        : '');
+  }
+  E.ultimoReset = mesActual;
+  guardar();
+  setTimeout(function() { actualizarUI(); renderSobres(); }, 0);
+  // Modo consulta: el cierre y el archivo siguen funcionando; se conserva el
+  // monto (igual que "Mismo monto que antes") sin preguntar.
+  if (!puedeEscribir()) {
+    if (resumen) setTimeout(function() { toast('\uD83D\uDCDA ' + resumen); }, 600);
     return;
   }
+  // El cierre ya quedó hecho: el diálogo solo pregunta el monto del mes nuevo.
+  // Cerrarlo sin elegir conserva el monto anterior.
   dlg({
     e: '🌟',
     t: '¡Nuevo mes, nuevo arranque!',
-    s: 'Es ' + nomMes + ' — ¿con cuánto contamos este mes?',
+    s: resumen + 'Es ' + nomMes + ' — ¿con cuánto contamos este mes?',
     inp: true,
     ph: '$ ' + (E.perfil.mto ? fmx(E.perfil.mto) + ' (igual que antes)' : '¿Cuánto tienes?'),
     md: 'decimal',
     btns: [
       {l: 'Empezar ' + nomMes, c: 'p', f: function(v) {
-        if (!isNaN(mesIdxCerrado) && !isNaN(anioCerrado)) archivarMes(mesIdxCerrado, anioCerrado, mtoCerrado);
         var val = parseFloat(v) || E.perfil.mto || 0;
         if (val > 0) E.perfil.mto = val;
-        E.ultimoReset = mesActual;
-        E.saldoArrastrado = 0; // El arrastre ya fue aplicado al disponible — se limpia al confirmar el mes nuevo
-        E.tipoArrastre = null;
-        E.ingresoExtraMes = 0; // Los ingresos extra del mes que cerró ya se gastaron o quedaron en los sobres — se limpia el acumulador
-        E.limsExtraMes = {}; // El espacio extra temporal por sobre también se limpia (el límite base no se tocó)
         guardar();
-        actualizarUI();
+        actualizarUI(); renderSobres();
         verificarInsignias();
         toast('¡Bienvenida a ' + nomMes + ', ' + (E.perfil.nom||'Amiga') + '! 🌿');
       }},
       {l: 'Mismo monto que antes', c: 's', f: function() {
-        if (!isNaN(mesIdxCerrado) && !isNaN(anioCerrado)) archivarMes(mesIdxCerrado, anioCerrado, mtoCerrado);
-        E.ultimoReset = mesActual;
-        E.saldoArrastrado = 0;
-        E.tipoArrastre = null;
-        E.ingresoExtraMes = 0;
-        E.limsExtraMes = {};
-        guardar();
-        actualizarUI();
+        actualizarUI(); renderSobres();
         verificarInsignias();
-        toast('¡Adelante con ' + nomMes + '! 💪');
+        toast('¡Adelante con ' + nomMes + '! \uD83D\uDCAA');
       }}
     ]
   });
@@ -5703,9 +5837,9 @@ function dlgAbonarTarjetaMonto(idx, seleccion) {
         var regId = Date.now();
         // Registrar la parte revolvente como gasto en sobre deudas
         E.regs.push({id: regId, sobre: 'deudas', sub: 'tarjeta', mto: montoRevolvente,
-          nota: 'Pago ' + t.nom + (totalMSI > 0 ? ' (+ ' + fmx(totalMSI) + ' MSI)' : ''), fecha: new Date().toISOString()});
+          nota: 'Pago ' + t.nom + (totalMSI > 0 ? ' (+ ' + fmx(totalMSI) + ' MSI)' : ''), periodo: periodoActual(), fecha: new Date().toISOString()});
         if (!getTarjetas()[idx].pagos) getTarjetas()[idx].pagos = [];
-        getTarjetas()[idx].pagos.push({id: regId, regId: regId, mto: montoRevolvente, fecha: new Date().toISOString()});
+        getTarjetas()[idx].pagos.push({id: regId, regId: regId, mto: montoRevolvente, periodo: periodoActual(), fecha: new Date().toISOString()});
         getTarjetas()[idx].saldo = Math.max(0, t.saldo - montoRevolvente);
         if (getTarjetas()[idx].saldo === 0) getTarjetas()[idx].esTotalera = true;
         var pagoMinRef = t.pagoMin || Math.max(200, Math.round(t.saldo * 0.015));
@@ -5718,7 +5852,7 @@ function dlgAbonarTarjetaMonto(idx, seleccion) {
           if (msiIdx < 0) return;
           E.regs.push({id: Date.now() + Math.floor(Math.random() * 1000), sobre: 'deudas', sub: 'abonos',
             mto: m.pagoMensual, nota: 'MSI ' + m.nom + ' (' + ((m.mesesPagados || 0) + 1) + '/' + m.meses + ')',
-            fecha: new Date().toISOString()});
+            periodo: periodoActual(), fecha: new Date().toISOString()});
           getMSI()[msiIdx].mesesPagados = (getMSI()[msiIdx].mesesPagados || 0) + 1;
         });
 
@@ -5760,6 +5894,10 @@ function dlgCorregirPago(idx, pagoId) {
   var pago = null;
   (t.pagos||[]).forEach(function(p){ if (p.id === pagoId) pago = p; });
   if (!pago) return;
+  var regPago = null;
+  E.regs.forEach(function(r){ if (r.id === pago.regId) regPago = r; });
+  var perPago = regPago ? periodoDe(regPago) : (pago.periodo || ymDe(pago.fecha));
+  if (mesEstaCerrado(perPago)) { avisoMesCerrado(perPago); return; }
   dlg({
     e: '✏️', t: 'Corregir pago',
     inf: 'Monto registrado: ' + fmx(pago.mto) + '\nEsto ajustará el saldo de tu tarjeta automáticamente.',
@@ -6181,7 +6319,7 @@ function dlgPagarMSI(idx) {
           id: Date.now(), sobre: 'deudas', sub: 'abonos',
           mto: m.pagoMensual,
           nota: 'MSI ' + m.nom + ' (' + ((m.mesesPagados||0)+1) + '/' + m.meses + ')',
-          fecha: new Date().toISOString()
+          periodo: periodoActual(), fecha: new Date().toISOString()
         });
         getMSI()[idx].mesesPagados = (m.mesesPagados || 0) + 1;
         var restantesNuevo = m.meses - getMSI()[idx].mesesPagados;
@@ -6517,7 +6655,7 @@ function dlgElegirSobreAbono(i, val, nom){
   var btns = sobres.map(function(s){
     return {l:s.ico+' '+s.cor,c:'s',f:function(){
       E.metas[i].actual=(E.metas[i].actual||0)+val;
-      E.regs.push({id:Date.now(),sobre:s.id,sub:null,mto:val,nota:'Abono a meta: '+nom,fecha:new Date().toISOString()});
+      E.regs.push({id:Date.now(),sobre:s.id,sub:null,mto:val,nota:'Abono a meta: '+nom,periodo: periodoActual(), fecha:new Date().toISOString()});
       guardar();renderMetas();actualizarUI();renderSobres();
       if(E.metas[i].actual>=E.metas[i].meta){setTimeout(function(){toast('🎉 ¡Meta cumplida!');verificarInsignias();},300);}
       else{toast('✅ '+fmx(val)+' descontado de '+s.cor+' y abonado a '+nom);}
@@ -6540,7 +6678,7 @@ function dlgOrigenAbono(i, val){
       }},
       {l:'💸 Ingreso extra',c:'p',f:function(){
         E.metas[i].actual=(E.metas[i].actual||0)+val;
-        E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,nota:'Ingreso extra → Meta: '+nom,fecha:new Date().toISOString()});
+        E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,nota:'Ingreso extra → Meta: '+nom,periodo: periodoActual(), fecha:new Date().toISOString()});
         guardar();cerrarDlg();renderMetas();
         if(E.metas[i].actual>=E.metas[i].meta){setTimeout(function(){toast('🎉 ¡Meta cumplida!');verificarInsignias();},300);}
         else{toast('✅ Abono guardado — registrado como ingreso extra');}
@@ -6592,7 +6730,7 @@ function dlgIngresoSobre(val){
       if (!E.limsExtraMes) E.limsExtraMes = {};
       E.limsExtraMes[s.id] = (E.limsExtraMes[s.id]||0) + val;
       E.ingresoExtraMes = (E.ingresoExtraMes||0) + val;
-      E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,nota:'Ingreso extra para '+s.cor,fecha:new Date().toISOString()});
+      E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,nota:'Ingreso extra para '+s.cor,periodo: periodoActual(), fecha:new Date().toISOString()});
       guardar();cerrarDlg();actualizarUI();renderSobres();
       toast('✅ '+fmx(val)+' agregado a tu sobre de '+s.cor+' este mes');
     }};
@@ -6620,7 +6758,7 @@ function dlgIngresoMeta(val){
   var btns = metas.map(function(m,i){
     return {l:(m.ico||'🎯')+' '+m.nom,c:'s',f:function(){
       m.actual=(m.actual||0)+val;
-      E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,nota:'Ingreso extra → Meta: '+m.nom,fecha:new Date().toISOString()});
+      E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,nota:'Ingreso extra → Meta: '+m.nom,periodo: periodoActual(), fecha:new Date().toISOString()});
       guardar();cerrarDlg();renderMetas();
       if(m.actual>=m.meta){setTimeout(function(){toast('🎉 ¡Meta cumplida!');verificarInsignias();},300);}
       else{toast('✅ '+fmx(val)+' agregado a tu meta '+m.nom);}
