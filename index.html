@@ -1871,6 +1871,8 @@ function iniciarApp() {
     mostrarCuandoLibre(avisoFinPrueba);
   } else {
     chkCumpleRetro();
+    // Después de los avisos de inicio (cumpleaños se abre a los 600 ms)
+    setTimeout(function() { mostrarCuandoLibre(preguntarVencPendientes); }, 1200);
   }
 }
 function chkCumpleRetro(){
@@ -2228,12 +2230,13 @@ function renderSubSobres(cont, s, id) {
 
 function renderCasa(cont, s) {
   var srvs = E.servicios || [];
-  var activos = srvs.map(function(x, j) { return Object.assign({}, x, {dias: diasVence(x), idx: j}); })
-    .filter(function(x) { return x.dias <= 10; })
-    .sort(function(a,b) { return a.dias - b.dias; });
-  var lejanos = srvs.map(function(x, j) { return Object.assign({}, x, {dias: diasVence(x), idx: j}); })
-    .filter(function(x) { return x.dias > 10; })
-    .sort(function(a,b) { return a.dias - b.dias; });
+  var lista = srvs.map(function(x, j) { return Object.assign({}, x, {est: estadoSrv(x), idx: j}); });
+  // Próximos: vencidos (primero), los que vencen en 10 días o menos y los
+  // que esperan su fecha. Lejanos: más de 10 días.
+  var activos = lista.filter(function(x) { return x.est.tipo !== 'lejano'; })
+    .sort(function(a,b) { return a.est.orden - b.est.orden; });
+  var lejanos = lista.filter(function(x) { return x.est.tipo === 'lejano'; })
+    .sort(function(a,b) { return a.est.dias - b.est.dias; });
   var html = '<div class="sec-t" style="margin-top:0">📅 Mis Pagos Programados</div>';
   if (!srvs.length) {
     html += '<div style="background:#fff;border-radius:10px;padding:16px;text-align:center;margin-bottom:12px">' +
@@ -2242,32 +2245,25 @@ function renderCasa(cont, s) {
       '<div style="font-size:12px;color:#7D5F4E;line-height:1.5">Agrega tus servicios y la app te avisará 10, 5 y 2 días antes de que venzan.</div>' +
       '</div>';
   } else {
-    activos.forEach(function(s, i) {
-      var pagado = pagadoEstePeriodo(s);
-      var col = pagado ? 'v' : colorSrv(s.dias);
-      var dtxt = pagado ? 'Al corriente' : s.dias===0?'¡HOY VENCE!':s.dias===1?'Vence mañana':'Vence en '+s.dias+' días';
-      html += '<div class="srv '+col+'">'+
+    activos.forEach(function(s) {
+      var e = s.est;
+      html += '<div class="srv '+e.col+'">'+
         '<div class="srv-ico">'+s.ico+'</div>'+
         '<div style="flex:1"><div class="srv-n">'+escHtml(s.nom)+'</div><div class="srv-d">Día '+s.dia+' · '+(PERIODOS[s.per]?PERIODOS[s.per].lb:s.per)+(s.mto?' · '+fmx(s.mto):'')+'</div>'+
-        (pagado
-          ? '<div style="margin-top:4px;font-size:11px;font-weight:600;color:#4E7A52">\u2713 Pagado'+
-            (puedeDeshacerPago(s) ? ' <button class="btn-marc pg" style="margin-top:0;margin-left:4px" onclick="desmarcarPagado('+s.idx+')">\u21A9 Deshacer</button>' : '')+
-            '</div></div>'
-          : '<button class="btn-marc c" style="margin-top:4px" onclick="marcarPagado('+s.idx+')">✓ Ya pagué</button></div>')+
-        '<div class="srv-bdg '+col+'">'+dtxt+'</div>'+
+        (e.detalle ? '<div class="srv-d" style="color:'+(e.tipo==='vencido'?'#B5543C':'#7D5F4E')+';font-weight:600">'+escHtml(e.detalle)+'</div>' : '')+
+        avisoSobreSrv(s)+
+        botonesSrv(s)+'</div>'+
+        '<div class="srv-bdg '+e.col+'">'+escHtml(e.txt)+'</div>'+
         btnEditarSrv(s.idx)+
         '</div>';
     });
     if (lejanos.length) {
       lejanos.forEach(function(s) {
         html += '<div class="srv-lejano"><div style="font-size:18px">'+s.ico+'</div>'+
-          '<div style="flex:1;font-size:12px;color:#3D2B1F">'+escHtml(s.nom)+'</div>'+
-          '<div style="font-size:11px;color:#7D5F4E">Día '+s.dia+' · en '+s.dias+' días'+
-          (pagadoEstePeriodo(s)
-            ? '<div style="font-size:11px;font-weight:600;color:#4E7A52;text-align:right">\u2713 Al corriente'+
-              (puedeDeshacerPago(s) ? ' <button class="btn-marc pg" style="margin-top:2px;margin-left:4px" onclick="desmarcarPagado('+s.idx+')">\u21A9 Deshacer</button>' : '')+
-              '</div>'
-            : '')+
+          '<div style="flex:1;font-size:12px;color:#3D2B1F">'+escHtml(s.nom)+avisoSobreSrv(s)+'</div>'+
+          '<div style="font-size:11px;color:#7D5F4E;text-align:right">'+escHtml(s.est.txt)+
+          (tienePagosSrv(s) ? '<div style="font-size:11px;font-weight:600;color:#4E7A52">✓ Al corriente</div>' : '')+
+          botonesSrv(s)+
           '</div>'+btnEditarSrv(s.idx)+'</div>';
       });
     }
@@ -2457,8 +2453,8 @@ function contReg() {
 }
 
 // ════ SERVICIOS ═══════════════════════════════════
-// Próximo vencimiento del servicio (Date). Lo usan diasVence() y
-// fechaVencActual() para que siempre apunten a la misma fecha.
+// fechaVenc, fechaVencActual y pagadoEstePeriodo son el cálculo anterior
+// (antes de proxVenc). Solo se usan para convertir servicios viejos.
 function fechaVenc(srv, hoy) {
   var dia = parseInt(srv.dia) || 1;
   var mes = hoy.getMonth();
@@ -2471,36 +2467,72 @@ function fechaVenc(srv, hoy) {
   return fv;
 }
 
-function diasVence(srv) {
-  var hoy = new Date();
-  return Math.max(0, Math.ceil((fechaVenc(srv, hoy) - hoy) / 864e5));
-}
-
-// Vencimiento al que apunta diasVence() hoy, como 'YYYY-MM-DD'.
+// Vencimiento según el cálculo anterior, como 'YYYY-MM-DD'.
 function fechaVencActual(srv) {
   var fv = fechaVenc(srv, new Date());
   return fv.getFullYear()+'-'+('0'+(fv.getMonth()+1)).slice(-2)+'-'+('0'+fv.getDate()).slice(-2);
 }
 
-// ¿El pago marcado cubre el vencimiento actual? Cuando pasa esa fecha,
-// diasVence() apunta al siguiente y esto vuelve a false. Pagos marcados
-// antes de guardar vencCubierto → false (comportamiento de siempre).
+// ¿El pago marcado cubre el vencimiento del cálculo anterior?
 function pagadoEstePeriodo(srv) {
   return !!srv.vencCubierto && srv.vencCubierto === fechaVencActual(srv);
 }
 
-// Solo pagos de este periodo marcados con la versión que guarda los datos de
-// deshacer, y que no hayan quedado en un mes ya cerrado.
-function puedeDeshacerPago(srv) {
-  return pagadoEstePeriodo(srv) && (srv.regIdPago !== undefined || srv.pagoPrevio !== undefined) &&
-    !mesEstaCerrado(periodoPagoSrv(srv));
+// Días de hoy a un 'YYYY-MM-DD', solo fechas, sin hora (negativo = ya venció).
+function diasHastaYmd(ymd, hoy) {
+  var h = hoy || new Date();
+  var a = Date.UTC(h.getFullYear(), h.getMonth(), h.getDate());
+  var b = Date.UTC(parseInt(ymd.slice(0, 4), 10), parseInt(ymd.slice(5, 7), 10) - 1, parseInt(ymd.slice(8, 10), 10));
+  return Math.round((b - a) / 864e5);
 }
-// Mes al que pertenece el pago marcado de un servicio.
-function periodoPagoSrv(srv) {
-  if (srv.regIdPago !== null && srv.regIdPago !== undefined) {
-    for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === srv.regIdPago) return periodoDe(E.regs[i]); }
+function txtDias(n) { return n + (n === 1 ? ' día' : ' días'); }
+// Estado del servicio para Casa, el aviso de Inicio y la Agenda.
+// tipo: vencido | proximo (≤10 días) | lejano | confirmar (sin proxVenc)
+function estadoSrv(s, hoy) {
+  hoy = hoy || new Date();
+  if (!s.proxVenc) return {tipo:'confirmar', dias:null, orden:500, col:'a', txt:'Por confirmar',
+    detalle:'Confirma cuándo vence tu próximo recibo'};
+  var dias = diasHastaYmd(s.proxVenc, hoy);
+  var fc = fechaCorta(s.proxVenc + 'T12:00:00');
+  if (dias < 0) {
+    var n = recibosPendientes(s, hoy).length;
+    var sig = diasHastaYmd(sumarMesesVenc(s.proxVenc, mesesCicloSrv(s), s.dia), hoy);
+    return {tipo:'vencido', dias:dias, pend:n, orden:dias - 1000, col:'r',
+      txt:n >= 2 ? n + ' recibos pendientes' : 'Vencido hace ' + txtDias(-dias),
+      detalle:n >= 2 ? 'El más antiguo venció hace ' + txtDias(-dias)
+        : 'Recibo del ' + fc + (sig <= 10 ? ' · el siguiente vence en ' + txtDias(sig) : '')};
   }
-  return srv.pagoPeriodo || (srv.ultimoPago ? ymDe(srv.ultimoPago) : '');
+  if (dias <= 10) return {tipo:'proximo', dias:dias, orden:dias, col:colorSrv(dias),
+    txt:dias === 0 ? '¡HOY VENCE!' : dias === 1 ? 'Vence mañana' : 'Vence en ' + dias + ' días', detalle:''};
+  return {tipo:'lejano', dias:dias, orden:dias, col:'', txt:'Próximo ' + fc + ' · en ' + txtDias(dias), detalle:''};
+}
+function tienePagosSrv(s) { return (s.pagos || []).length > 0; }
+// "Ya pagué" siempre (salvo sin fecha: primero se confirma) y "Deshacer"
+// para el último pago si su mes sigue abierto.
+function botonesSrv(s) {
+  if (s.est.tipo === 'confirmar')
+    return '<button class="btn-marc c" style="margin-top:4px" onclick="dlgProxVencSrv('+s.idx+')">\uD83D\uDCC5 Confirmar fecha</button>';
+  return '<div style="margin-top:4px"><button class="btn-marc c" style="margin-top:0" onclick="marcarPagado('+s.idx+')">✓ Ya pagué</button>'+
+    (puedeDeshacerPago(s) ? ' <button class="btn-marc pg" style="margin-top:0;margin-left:4px" onclick="desmarcarPagado('+s.idx+')">\u21A9 Deshacer</button>' : '')+
+    '</div>';
+}
+function avisoSobreSrv(s) {
+  return s.sobreRevisar ? '<div class="srv-d" style="color:#B07A1E;font-weight:600">\u26A0\uFE0F Revisa de qué sobre sale (\u270F\uFE0F)</div>' : '';
+}
+// Pagos que se registraron juntos ("Pagar los 2") forman un grupo.
+function ultimoGrupoPagosSrv(s) {
+  var ps = s.pagos || [];
+  if (!ps.length) return [];
+  var ult = ps[ps.length - 1], clave = ult.grupo || ult.id;
+  return ps.filter(function(p) { return (p.grupo || p.id) === clave; });
+}
+// El último pago (o grupo) se puede deshacer si su mes no está cerrado.
+// Los de versiones anteriores, solo si se marcaron con datos para deshacer.
+function puedeDeshacerPago(srv) {
+  var g = ultimoGrupoPagosSrv(srv);
+  if (!g.length || !g[0].venc || mesEstaCerrado(g[0].periodo)) return false;
+  return (g[0].estimado !== null && g[0].estimado !== undefined) ||
+    srv.regIdPago !== undefined || srv.pagoPrevio !== undefined;
 }
 
 function colorSrv(dias) {
@@ -2514,16 +2546,16 @@ function renderBanSrv() {
   var cont = document.getElementById('bans-srv');
   if (!cont) return;
   var srvs = E.servicios || [];
-  var prox = srvs.map(function(s) { return Object.assign({},s,{dias:diasVence(s)}); })
-    .filter(function(s){ return s.dias <= 10 && !pagadoEstePeriodo(s); })
-    .sort(function(a,b){ return a.dias-b.dias; })
+  var prox = srvs.map(function(s) { return Object.assign({},s,{est:estadoSrv(s)}); })
+    .filter(function(s){ return s.est.tipo === 'vencido' || s.est.tipo === 'proximo'; })
+    .sort(function(a,b){ return a.est.orden-b.est.orden; })
     .slice(0,2);
   if (!prox.length) { cont.innerHTML = ''; return; }
   var cls = {'v':'verde','a':'amarillo','r':'rojo'};
   var emo = {'v':'🟢','a':'🟡','r':'🔴'};
   cont.innerHTML = prox.map(function(s) {
-    var col = colorSrv(s.dias);
-    var dtxt = s.dias===0?'¡HOY VENCE!':s.dias===1?'Vence mañana':'Vence en '+s.dias+' días';
+    var col = s.est.col;
+    var dtxt = s.est.txt;
     return '<div class="ban '+(cls[col]||'verde')+'" onclick="abrirSobre(\'casa\')">' +
       '<div style="font-size:20px">'+s.ico+'</div>' +
       '<div style="flex:1"><div class="ban-tit">'+(emo[col]||'🟢')+' '+escHtml(s.nom)+' — '+dtxt+'</div>' +
@@ -2537,7 +2569,11 @@ function renderBanSrv() {
 function getAgendaItems() {
   var items = [];
   (E.servicios||[]).forEach(function(s) {
-    items.push({ico:s.ico,nom:s.nom,dias:diasVence(s),mto:s.mto,tipo:'Servicio',pagado:pagadoEstePeriodo(s),fn:"cerrarMo('mo-agenda');abrirSobre('casa')"});
+    var e = estadoSrv(s);
+    // Vencidos con días negativos (van primero); por confirmar, al final
+    items.push({ico:s.ico,nom:s.nom,dias:e.tipo === 'confirmar' ? 999 : e.dias,mto:s.mto,tipo:'Servicio',
+      pagado:e.tipo === 'lejano' && tienePagosSrv(s),txt:e.tipo === 'lejano' ? null : e.txt,col:e.col,
+      fn:"cerrarMo('mo-agenda');abrirSobre('casa')"});
   });
   getTarjetas().forEach(function(t) {
     if (t.diaPago) items.push({ico:t.ico||'💳',nom:t.nom,dias:calcDiasHasta(t.diaPago),mto:t.saldo,tipo:'Tarjeta',fn:"cerrarMo('mo-agenda');abrirSobre('deudas')"});
@@ -2575,12 +2611,12 @@ function renderAgenda() {
   }
   var emo = {'v':'🟢','a':'🟡','r':'🔴'};
   cont.innerHTML = items.map(function(it) {
-    var col = it.pagado ? 'v' : colorSrv(it.dias);
-    var dtxt = it.pagado ? 'Al corriente' : it.dias===0 ? '¡HOY VENCE!' : it.dias===1 ? 'Vence mañana' : 'Vence en ' + it.dias + ' días';
+    var col = it.pagado ? 'v' : it.txt ? it.col : colorSrv(it.dias);
+    var dtxt = it.pagado ? 'Al corriente' : it.txt ? it.txt : it.dias===0 ? '¡HOY VENCE!' : it.dias===1 ? 'Vence mañana' : 'Vence en ' + it.dias + ' días';
     return '<div class="sub-s" onclick="'+it.fn+'">' +
       '<div class="ss-ico">'+it.ico+'</div>' +
       '<div class="ss-inf"><div class="ss-nom">'+escHtml(it.nom)+'</div><div class="ss-ej">'+it.tipo+(it.mto?' · '+fmx(it.mto):'')+'</div></div>' +
-      '<div style="text-align:right;font-size:12px;font-weight:700;white-space:nowrap">'+(emo[col]||'⚪')+' '+dtxt+'</div>' +
+      '<div style="text-align:right;font-size:12px;font-weight:700;white-space:nowrap">'+(emo[col]||'\u26AA')+' '+escHtml(dtxt)+'</div>' +
       '</div>';
   }).join('');
 }
@@ -2636,16 +2672,12 @@ function dlgMtoSrv(preset, dia, per) {
         var mto = r2(parseFloat(v)) || 0;
         if (!E.servicios) E.servicios = [];
         E.servicios.push(nuevoServicio(preset, dia, per, mto));
-        guardar(); abrirSobre('casa');
-        toast(preset.nom+' agregado — avisamos día '+dia+' 📅');
-        renderBanSrv();
+        terminarAltaSrv(E.servicios.length - 1);
       }},
       {l:'Sin monto',c:'s',f:function(){
         if (!E.servicios) E.servicios = [];
         E.servicios.push(nuevoServicio(preset, dia, per, 0));
-        guardar(); abrirSobre('casa');
-        toast(preset.nom+' agregado 📅');
-        renderBanSrv();
+        terminarAltaSrv(E.servicios.length - 1);
       }}
     ]
   });
@@ -2667,88 +2699,258 @@ function dlgSrvCustom() {
   });
 }
 
+// Paga el recibo más antiguo sin pagar (proxVenc). Con 2 o más pendientes
+// ofrece pagarlos juntos con un solo monto real.
 function marcarPagado(idx) {
   if (!exigirEscritura()) return; // modo consulta
   var s = (E.servicios||[])[idx];
   if (!s) return;
-  dlg({e:'✅',t:'¿Ya pagaste?',
-    inf:s.ico+' '+s.nom+(s.mto?'\nMonto: '+fmx(s.mto):''),
+  if (!s.proxVenc) { dlgProxVencSrv(idx); return; }
+  var pend = recibosPendientes(s);
+  if (pend.length < 2) { dlgMontoPagoSrv(idx, 1); return; }
+  var est = Number(s.mto) || 0;
+  dlg({e:'\uD83E\uDDFE', t:'Tienes ' + pend.length + ' recibos pendientes',
+    inf:s.ico + ' ' + s.nom + '\n' + pend.map(function(v) {
+      return 'Recibo del ' + fechaCorta(v + 'T12:00:00') + (est ? ' · ' + fmx(est) : '');
+    }).join('\n'),
     btns:[
-      {l:'Sí, ya pagué ✓',c:'p',f:function(){
-        var regId = null;
-        var ahoraIso = new Date().toISOString();
-        var pagoId = 'pg_' + Date.now();
-        if (s.mto > 0) {
-          // Mapear servicio a su subcategoría correcta
-          var subSrv = 'luz';
-          var nomL = s.nom.toLowerCase();
-          if(nomL.match(/internet|telmex|izzi|totalplay|megacable|axtel/)) subSrv = 'internet';
-          else if(nomL.match(/renta|hipoteca|depa|casa/)) subSrv = 'renta';
-          else if(nomL.match(/agua|sacmex|conagua/)) subSrv = 'luz';
-          else if(nomL.match(/gas/)) subSrv = 'luz';
-          else if(nomL.match(/celular|teléfono|plan|telcel|movistar|at&t/)) subSrv = 'internet';
-          else if(nomL.match(/mantenimiento|plomero|electricista/)) subSrv = 'mantto';
-          else if(nomL.match(/seguro|tenencia/)) subSrv = 'limpieza';
-          else if(nomL.match(/colegio|escuela|cuota/)) subSrv = 'renta';
-          regId = Date.now();
-          E.regs.push({id:regId,sobre:'casa',sub:subSrv,mto:s.mto,nota:s.nom+' — pago programado',periodo: periodoActual(), fecha:ahoraIso,
-            origen:{tipo:'servicio', id:s.id, pagoId:pagoId}});
-        }
-        // Historial propio del servicio (sobrevive al cierre de mes). El recibo
-        // que se paga es el más antiguo sin pagar (proxVenc), que avanza un ciclo.
-        var srvP = E.servicios[idx];
-        if (!srvP.pagos) srvP.pagos = [];
-        var vencP = srvP.proxVenc || fechaVencActual(srvP);
-        srvP.pagos.push({id:pagoId, fecha:ahoraIso, venc:vencP, ciclo:cicloDe(vencP, mesesCicloSrv(srvP)),
-          estimado:s.mto > 0 ? s.mto : 0, mto:s.mto > 0 ? s.mto : 0, ajuste:0, periodo:periodoActual(), regId:regId, origen:'sobre'});
-        if (srvP.proxVenc) srvP.proxVenc = sumarMesesVenc(srvP.proxVenc, mesesCicloSrv(srvP), srvP.dia);
-        // Datos para poder deshacer (ver desmarcarPagado)
-        E.servicios[idx].pagoPrevio = E.servicios[idx].ultimoPago || null;
-        E.servicios[idx].regIdPago = regId;
-        E.servicios[idx].vencCubierto = fechaVencActual(s);
-        E.servicios[idx].ultimoPago = ahoraIso;
-        E.servicios[idx].pagoPeriodo = periodoActual();
-        guardar(); actualizarUI(); abrirSobre('casa');
-        toast('¡'+s.nom+' pagado!'+(s.mto>0?' '+fmx(s.mto)+' registrado':'')+' ✓');
-      }},
-      {l:'Cancelar',c:'s',f:null}
+      {l:'Pagar uno', c:'s', f:function(){ dlgMontoPagoSrv(idx, 1); }},
+      {l:'Pagar los ' + pend.length + (est ? ' (' + fmx(r2(est * pend.length)) + ')' : ''), c:'p', f:function(){ dlgMontoPagoSrv(idx, pend.length); }},
+      {l:'Cancelar', c:'s', f:null}
     ]
   });
+}
+function dlgMontoPagoSrv(idx, n) {
+  var s = E.servicios[idx], est = Number(s.mto) || 0, m = mesesCicloSrv(s);
+  var fc = function(v) { return fechaCorta(v + 'T12:00:00'); };
+  var vencs = [], v = s.proxVenc;
+  for (var k = 0; k < n; k++) { vencs.push(v); v = sumarMesesVenc(v, m, s.dia); }
+  var pend = recibosPendientes(s).length;
+  var rec = n === 1 ? 'Recibo del ' + fc(vencs[0]) + (pend >= 2 ? ' (1 de ' + pend + ' pendientes)' : '')
+    : 'Recibos del ' + vencs.map(fc).join(' y ');
+  dlg({e:'\u2705', t:'¿Ya pagaste?', s:'Escribe lo que pagaste. Si no lo sabes, deja el estimado.',
+    inf:s.ico + ' ' + s.nom + '\n' + rec + (est ? '\nEstimado: ' + fmx(r2(est * n)) : '') + '\nSe registra en ' + txtDestinoSrv(s),
+    inp:true, ph:'$ Monto pagado (0 = sin registrar gasto)', md:'decimal', val:est ? r2(est * n) : '',
+    btns:[
+      {l:'Sí, ya pagué ✓', c:'p', f:function(val){
+        var real = val === '' ? 0 : r2(parseFloat(val));
+        if (isNaN(real) || real < 0) { toast('Ingresa un monto válido'); return; }
+        registrarPagoSrv(idx, n, real);
+      }},
+      {l:'Cancelar', c:'s', f:null}
+    ]
+  });
+}
+// Un gasto por el monto real y un pago por recibo en el historial, del más
+// antiguo al más nuevo: cada uno toma su estimado y el último se queda con la
+// diferencia, así la suma de ajustes = real − suma de estimados.
+function registrarPagoSrv(idx, n, real) {
+  var s = E.servicios[idx], est = Number(s.mto) || 0, m = mesesCicloSrv(s);
+  var ahoraIso = new Date().toISOString(), pagoId = 'pg_' + Date.now(), regId = null, per = periodoActual();
+  var dest = destinoSrv(s);
+  if (real > 0) {
+    regId = Date.now();
+    E.regs.push({id:regId, sobre:dest.sobre, sub:dest.sub, mto:real,
+      nota:s.nom + ' — pago programado' + (n > 1 ? ' (' + n + ' recibos)' : ''), periodo:per, fecha:ahoraIso,
+      origen:{tipo:'servicio', id:s.id, pagoId:pagoId}});
+  }
+  if (!s.pagos) s.pagos = [];
+  var resto = real;
+  for (var k = 0; k < n; k++) {
+    var venc = s.proxVenc;
+    var mk = k === n - 1 ? resto : Math.min(est, resto);
+    resto = r2(resto - mk);
+    var pg = {id:n > 1 ? pagoId + '_' + (k + 1) : pagoId, fecha:ahoraIso, venc:venc, ciclo:cicloDe(venc, m),
+      estimado:est, mto:mk, ajuste:est > 0 && real > 0 ? r2(mk - est) : 0, periodo:per, regId:regId, origen:'sobre'};
+    if (n > 1) pg.grupo = pagoId;
+    s.pagos.push(pg);
+    s.proxVenc = sumarMesesVenc(venc, m, s.dia);
+  }
+  s.ultimoPago = ahoraIso;
+  limpiarPagoViejoSrv(s);
+  guardar(); actualizarUI(); abrirSobre('casa');
+  toast('¡' + s.nom + ' pagado!' + (real > 0 ? ' ' + fmx(real) + ' registrado' : '') + ' ✓');
+}
+// Datos de deshacer de versiones anteriores (antes del historial de pagos).
+function limpiarPagoViejoSrv(s) {
+  delete s.pagoPrevio; delete s.regIdPago; delete s.vencCubierto; delete s.pagoPeriodo;
 }
 
 function desmarcarPagado(idx) {
   if (!exigirEscritura()) return; // modo consulta
   var s = (E.servicios||[])[idx];
   if (!s) return;
-  var perPago = periodoPagoSrv(s);
-  if (mesEstaCerrado(perPago)) { avisoMesCerrado(perPago); return; }
-  var reg = null;
-  if (s.regIdPago !== null && s.regIdPago !== undefined) {
-    for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === s.regIdPago) { reg = E.regs[i]; break; } }
-  }
+  var grupo = ultimoGrupoPagosSrv(s);
+  if (!grupo.length) return;
+  if (mesEstaCerrado(grupo[0].periodo)) { avisoMesCerrado(grupo[0].periodo); return; }
+  if (!puedeDeshacerPago(s)) return;
+  var regId = grupo[0].regId, reg = null;
+  if (regId !== null && regId !== undefined) E.regs.forEach(function(r) { if (r.id === regId) reg = r; });
   dlg({e:'\u21A9\uFE0F',t:'¿Deshacer pago?',
-    inf:s.ico+' '+s.nom+(reg?'\nSe eliminará el registro de '+fmx(reg.mto):''),
+    inf:s.ico+' '+s.nom+'\n'+(grupo.length > 1 ? 'Recibos del ' : 'Recibo del ')+
+      grupo.map(function(p) { return fechaCorta(p.venc + 'T12:00:00'); }).join(' y ')+
+      (reg?'\nSe eliminará el registro de '+fmx(reg.mto):''),
     btns:[
       {l:'Sí, deshacer',c:'p',f:function(){
-        if (reg) E.regs = E.regs.filter(function(r){ return r.id !== s.regIdPago; });
-        if (s.pagos) {
-          var fu = s.ultimoPago, quitado = null;
-          s.pagos = s.pagos.filter(function(p){ if (p.fecha === fu) { quitado = p; return false; } return true; });
-          // El recibo vuelve a quedar como el más antiguo sin pagar
-          if (quitado && quitado.venc && s.proxVenc) s.proxVenc = quitado.venc;
-        }
-        if (s.pagoPrevio) s.ultimoPago = s.pagoPrevio;
+        if (reg) E.regs = E.regs.filter(function(r){ return r !== reg; });
+        s.pagos = s.pagos.filter(function(p){ return grupo.indexOf(p) === -1; });
+        // El recibo más antiguo del grupo vuelve a quedar sin pagar
+        s.proxVenc = grupo[0].venc;
+        if (s.pagos.length) s.ultimoPago = s.pagos[s.pagos.length - 1].fecha;
+        else if (s.pagoPrevio) s.ultimoPago = s.pagoPrevio;
         else delete s.ultimoPago;
-        delete s.pagoPrevio;
-        delete s.regIdPago;
-        delete s.vencCubierto;
-        delete s.pagoPeriodo;
+        limpiarPagoViejoSrv(s);
         guardar(); actualizarUI(); abrirSobre('casa');
         toast('Pago de '+s.nom+' deshecho');
       }},
       {l:'Cancelar',c:'s',f:null}
     ]
   });
+}
+
+// ── FECHA DEL PRÓXIMO RECIBO (no mensuales) ──
+// Primer recibo con ese día a partir de hoy (hoy cuenta).
+function primerVencDesde(dia, hoy) {
+  var hoyK = fechaLocalKey(hoy || new Date());
+  var v = sumarMesesVenc(hoyK.slice(0, 7) + '-01', 0, dia);
+  return v < hoyK ? sumarMesesVenc(v, 1, dia) : v;
+}
+// Mensual nuevo o que pasa a mensual: ese primer recibo, o el siguiente si ya
+// quedó pagado.
+function proxVencNuevoMensual(s, hoy) {
+  var v = primerVencDesde(s.dia, hoy);
+  var ps = s.pagos || [], ult = ps.length ? ps[ps.length - 1].venc : null;
+  while (ult && v <= ult) v = sumarMesesVenc(v, 1, s.dia);
+  return v;
+}
+// Fechas posibles: las próximas (una por mes del ciclo) y las ya vencidas.
+function opcionesVencSrv(s, hoy) {
+  var m = mesesCicloSrv(s), pri = primerVencDesde(s.dia, hoy), fut = [], pas = [];
+  for (var k = 0; k < m; k++) fut.push(sumarMesesVenc(pri, k, s.dia));
+  for (k = 1; k <= m; k++) pas.push(sumarMesesVenc(pri, -k, s.dia));
+  return {fut:fut, pas:pas};
+}
+// op.inicio: pregunta al abrir la app (no abre Casa). op.despues: siguiente paso.
+function dlgProxVencSrv(idx, op) {
+  op = op || {};
+  if (!exigirEscritura()) return; // modo consulta
+  var s = (E.servicios || [])[idx];
+  if (!s) return;
+  var o = opcionesVencSrv(s);
+  var fc = function(v) { return fechaCorta(v + 'T12:00:00'); };
+  var listo = function(v) {
+    s.proxVenc = v; s.vencPreguntado = true;
+    guardar(); actualizarUI();
+    if (!op.inicio) abrirSobre('casa');
+    toast(s.nom + ': próximo recibo ' + fc(v) + ' ✓');
+    if (op.despues) op.despues();
+  };
+  var noAhora = function() { if (op.despues) op.despues(); };
+  var btns = o.fut.map(function(v) { return {l:fc(v), c:'s', f:function(){ listo(v); }}; });
+  btns.push({l:'Tengo uno vencido sin pagar', c:'s', f:function(){
+    var b2 = o.pas.map(function(v) { return {l:fc(v), c:'s', f:function(){ listo(v); }}; });
+    b2.push({l:'Cancelar', c:'s', f:noAhora});
+    dlg({e:'\uD83E\uDDFE', t:'¿De qué fecha es el recibo sin pagar?', s:s.ico + ' ' + s.nom + ' · elige el más antiguo', btns:b2});
+  }});
+  btns.push({l:'Ahora no', c:'s', f:noAhora});
+  dlg({e:'\uD83D\uDCC5', t:'¿Cuándo vence tu próximo recibo?',
+    s:s.ico + ' ' + s.nom + ' · ' + (PERIODOS[s.per] ? PERIODOS[s.per].lb : s.per) + ', día ' + s.dia + '. Viene en tu último recibo.',
+    btns:btns});
+}
+// Una sola vez por servicio sin fecha (los de versiones anteriores).
+function preguntarVencPendientes() {
+  if (!puedeEscribir()) return;
+  var srvs = E.servicios || [];
+  for (var i = 0; i < srvs.length; i++) {
+    if (!srvs[i].proxVenc && !srvs[i].vencPreguntado) {
+      srvs[i].vencPreguntado = true;
+      guardar();
+      dlgProxVencSrv(i, {inicio:true, despues:preguntarVencPendientes});
+      return;
+    }
+  }
+}
+
+// ── SOBRE Y CATEGORÍA DEL SERVICIO (M8) ──
+// Servicios que se reconocen por el nombre (sin acentos, en minúsculas).
+// Si no se reconoce, se pregunta al crearlo.
+var SRV_DESTINOS = [
+  [/electricista|plomero|mantenimiento|jardiner/, 'casa', 'mantto'],
+  [/seguro.*(medic|gastos med|salud)|\bgmm\b/, 'salud', 'medico'],
+  [/tenencia|verificacion|refrendo|seguro.*(auto|coche|carro|moto)/, 'transporte', 'seguro'],
+  [/colegi|escuela|universidad|inscripcion|guarderia/, 'educacion', 'colegio'],
+  [/\bgym\b|gimnasio|smart ?fit|crossfit|yoga/, 'salud', 'gym'],
+  [/netflix|spotify|disney|hbo|\bmax\b|prime video|amazon prime|youtube|paramount|\bvix\b|crunchyroll|apple tv|deezer/, 'personal', 'entrete'],
+  [/renta|hipoteca|alquiler|infonavit|fovissste/, 'casa', 'renta'],
+  [/internet|telmex|izzi|totalplay|megacable|axtel|wifi|celular|telefono|telcel|movistar|at&t|\bbait\b|\bplan\b/, 'casa', 'internet'],
+  [/\bcfe\b|\bluz\b|agua|sacmex|conagua|\bgas\b|naturgy/, 'casa', 'luz']
+];
+function detectarSobreSrv(nom) {
+  var t = String(nom || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  for (var i = 0; i < SRV_DESTINOS.length; i++) {
+    if (SRV_DESTINOS[i][0].test(t)) return {sobre:SRV_DESTINOS[i][1], sub:SRV_DESTINOS[i][2]};
+  }
+  return null;
+}
+function destinoSrv(s) {
+  return s.sobre ? {sobre:s.sobre, sub:s.sub} : (detectarSobreSrv(s.nom) || {sobre:'casa', sub:'luz'});
+}
+function subsDeSobre(id) {
+  var sb = todosSobres().filter(function(x) { return x.id === id; })[0];
+  return sb ? (sb.subs || []).concat((E.subsCB && E.subsCB[id]) || []) : [];
+}
+function nombreSobreId(id) {
+  var sb = todosSobres().filter(function(x) { return x.id === id; })[0];
+  return sb ? sb.cor : id;
+}
+function txtDestinoSrv(s) {
+  var d = destinoSrv(s);
+  var sub = subsDeSobre(d.sobre).filter(function(x) { return x.id === d.sub; })[0];
+  return nombreSobreId(d.sobre) + (sub ? ' › ' + sub.nom : '');
+}
+function sobresDeGasto() {
+  return todosSobres().filter(function(x) { return !x.esMetas && !x.esAhorro && !x.esTanda && !x.esPr; });
+}
+// op.alta: al crear el servicio; si no elige, queda en Casa marcado para revisar.
+function dlgSobreSrv(idx, op) {
+  op = op || {};
+  if (!exigirEscritura()) return; // modo consulta
+  var s = E.servicios[idx];
+  var fin = function(sobre, sub) {
+    s.sobre = sobre; s.sub = sub; delete s.sobreRevisar;
+    guardar(); abrirSobre('casa');
+    toast(s.nom + ': se registra en ' + txtDestinoSrv(s) + ' ✓');
+    if (op.despues) op.despues();
+  };
+  var cancelar = function() {
+    if (op.alta) { s.sobre = 'casa'; s.sub = 'luz'; s.sobreRevisar = true; guardar(); abrirSobre('casa'); }
+    if (op.despues) op.despues();
+  };
+  var btns = sobresDeGasto().map(function(sb) {
+    return {l:sb.ico + ' ' + sb.cor, c:sb.id === s.sobre ? 'p' : 's', f:function(){
+      var subs = subsDeSobre(sb.id);
+      if (subs.length < 2) { fin(sb.id, subs.length ? subs[0].id : null); return; }
+      var b2 = subs.map(function(sub) { return {l:sub.ico + ' ' + sub.nom, c:sub.id === s.sub ? 'p' : 's', f:function(){ fin(sb.id, sub.id); }}; });
+      b2.push({l:'Cancelar', c:'s', f:cancelar});
+      dlg({e:sb.ico, t:'¿En qué categoría de ' + sb.cor + '?', s:s.ico + ' ' + s.nom, btns:b2});
+    }};
+  });
+  btns.push({l:op.alta ? 'Ahora no' : 'Cancelar', c:'s', f:cancelar});
+  dlg({e:'\uD83D\uDDC2\uFE0F', t:'¿De qué sobre sale ' + s.nom + '?',
+    s:op.alta ? 'Así su pago se registra en el lugar correcto. Puedes cambiarlo después con \u270F\uFE0F.'
+      : 'Los pagos que ya registraste no se mueven.',
+    btns:btns});
+}
+// Después de "Guardar servicio": sobre (si no se reconoce) y fecha (no mensual).
+function terminarAltaSrv(idx) {
+  var s = E.servicios[idx];
+  s.vencPreguntado = true;
+  var fecha = function() { if (!s.proxVenc) dlgProxVencSrv(idx); };
+  var d = detectarSobreSrv(s.nom);
+  if (d) { s.sobre = d.sobre; s.sub = d.sub; }
+  guardar(); abrirSobre('casa'); renderBanSrv();
+  if (d) { toast(s.nom + ' agregado · se registra en ' + txtDestinoSrv(s)); fecha(); }
+  else dlgSobreSrv(idx, {alta:true, despues:fecha});
 }
 
 // ── EDITAR / ELIMINAR SERVICIO (E1) ──
@@ -2788,7 +2990,7 @@ function proxVencMensual(s) {
 function nuevoServicio(preset, dia, per, mto) {
   var s = {id:'srv_' + Date.now(), v:2, ico:preset.ico, nom:preset.nom, per:per, dia:dia, proxVenc:null,
     sobre:null, sub:null, mto:mto, provision:null, pagos:[]};
-  if (mesesCicloSrv(s) === 1) s.proxVenc = proxVencMensual(s);
+  if (mesesCicloSrv(s) === 1) s.proxVenc = proxVencNuevoMensual(s);
   return s;
 }
 // Pago marcado con versiones anteriores: solo se sabe la fecha (y el monto si
@@ -2817,6 +3019,15 @@ function normalizarServicios() {
     s.v = 2;
     cambio = true;
   });
+  // M8: sobre y categoría. Si el nombre no se reconoce, se queda en Casa
+  // (como antes) pero marcado para que la usuaria lo revise con \u270F\uFE0F.
+  (E.servicios || []).forEach(function(s) {
+    if (s.sobre) return;
+    var d = detectarSobreSrv(s.nom);
+    if (d) { s.sobre = d.sobre; s.sub = d.sub; }
+    else { s.sobre = 'casa'; s.sub = 'luz'; s.sobreRevisar = true; }
+    cambio = true;
+  });
   return cambio;
 }
 function pagosSrv(s) { return (s.pagos || pagosSrvViejos(s)).slice(); }
@@ -2828,35 +3039,39 @@ function txtCiclo(c) {
   var m = function(ym) { return MESES_NOM[ymNum(ym) % 12].slice(0, 3).toLowerCase(); };
   return c.desde === c.hasta ? m(c.hasta) : m(c.desde) + '-' + m(c.hasta);
 }
-// Al cambiar día o periodicidad, un pago ya hecho sigue cubriendo el
-// vencimiento (la usuaria corrige el dato, no paga otra vez).
+// Al cambiar el día, el recibo pendiente conserva su mes. Al pasar a no
+// mensual se pregunta la fecha del próximo recibo.
 function cambiarVencSrv(idx, campo, val) {
   var s = E.servicios[idx];
-  var estabaPagado = pagadoEstePeriodo(s);
   s[campo] = val;
-  if (estabaPagado) s.vencCubierto = fechaVencActual(s);
   if (campo === 'dia' && s.proxVenc) s.proxVenc = sumarMesesVenc(s.proxVenc, 0, val);
   if (campo === 'per') {
-    if (mesesCicloSrv(s) !== 1) s.proxVenc = null; // por confirmar (Bloque 5)
-    else if (!s.proxVenc) s.proxVenc = proxVencMensual(s);
+    if (mesesCicloSrv(s) !== 1) s.proxVenc = null; // por confirmar
+    else if (!s.proxVenc) s.proxVenc = proxVencNuevoMensual(s);
   }
   guardar(); abrirSobre('casa'); renderBanSrv();
+  if (campo === 'per' && !s.proxVenc) dlgProxVencSrv(idx);
 }
 function dlgEditarSrv(idx) {
   var s = (E.servicios||[])[idx];
   if (!s) return;
   dlg({e:s.ico, t:s.nom,
     inf:'Día ' + s.dia + ' · ' + (PERIODOS[s.per] ? PERIODOS[s.per].lb : s.per) + '\nMonto estimado: ' + (s.mto ? fmx(s.mto) : 'sin monto') +
-      '\nPróximo recibo: ' + (s.proxVenc ? fechaCorta(s.proxVenc + 'T12:00:00') : 'por confirmar'),
+      '\nPróximo recibo: ' + (s.proxVenc ? fechaCorta(s.proxVenc + 'T12:00:00') : 'por confirmar') +
+      '\nSe registra en: ' + txtDestinoSrv(s) + (s.sobreRevisar ? ' (revísalo)' : ''),
     btns:[
       {l:'\u270F\uFE0F Nombre', c:'s', f:function(){ dlgEditarSrvNombre(idx); }},
       {l:'\uD83D\uDCB0 Monto estimado', c:'s', f:function(){ dlgEditarSrvMonto(idx); }},
       {l:'\uD83D\uDCC5 Día de pago', c:'s', f:function(){ dlgEditarSrvDia(idx); }},
-      {l:'\uD83D\uDD04 Cada cuánto', c:'s', f:function(){ dlgEditarSrvPer(idx); }},
+      {l:'\uD83D\uDD04 Cada cuánto', c:'s', f:function(){ dlgEditarSrvPer(idx); }}
+    ].concat(mesesCicloSrv(s) !== 1 ? [
+      {l:'\uD83D\uDCC5 Próximo recibo', c:'s', f:function(){ dlgProxVencSrv(idx); }}
+    ] : []).concat([
+      {l:'\uD83D\uDDC2\uFE0F Sobre y categoría', c:'s', f:function(){ dlgSobreSrv(idx); }},
       {l:'\uD83D\uDCCB Ver pagos', c:'s', f:function(){ dlgPagosSrv(idx); }},
       {l:'\uD83D\uDDD1 Eliminar servicio', c:'d', f:function(){ dlgEliminarSrv(idx); }},
       {l:'Cancelar', c:'s', f:null}
-    ]
+    ])
   });
 }
 function dlgEditarSrvNombre(idx) {
@@ -2913,6 +3128,7 @@ function dlgEditarSrvPer(idx) {
   var s = E.servicios[idx];
   var btns = Object.keys(PERIODOS).map(function(k) {
     return {l:(k === s.per ? '✓ ' : '') + PERIODOS[k].lb, c:k === s.per ? 'p' : 's', f:function(){
+      if (k === s.per) return;
       cambiarVencSrv(idx, 'per', k);
       toast(s.nom + ': ' + PERIODOS[k].lb + ' ✓');
     }};
@@ -2940,9 +3156,12 @@ function dlgEliminarSrv(idx) {
   var msg = '';
   if (enCasa.length) {
     var tot = enCasa.reduce(function(t, r) { return t + (Number(r.mto) || 0); }, 0);
-    var meses = [];
-    enCasa.forEach(function(r) { var m = ymNombre(periodoDe(r)).toLowerCase(); if (meses.indexOf(m) === -1) meses.push(m); });
-    msg = 'Tus pagos ya registrados (' + fmx(tot) + ' en ' + meses.join(' y ') + ') se quedan en Casa.';
+    var meses = [], sobres = [];
+    enCasa.forEach(function(r) {
+      var m = ymNombre(periodoDe(r)).toLowerCase(); if (meses.indexOf(m) === -1) meses.push(m);
+      var n = nombreSobreId(r.sobre); if (sobres.indexOf(n) === -1) sobres.push(n);
+    });
+    msg = 'Tus pagos ya registrados (' + fmx(tot) + ' en ' + meses.join(' y ') + ') se quedan en ' + sobres.join(' y ') + '.';
   } else {
     msg = 'Dejarás de recibir sus avisos. Lo que ya pagaste no cambia.';
   }
