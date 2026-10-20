@@ -924,6 +924,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div class="rep-c"><div class="rep-cl">Margen</div><div class="rep-cv" id="r-mg" style="color:#4E7A52">0%</div></div>
     </div>
     <div id="r-desg" style="display:none;font-size:11px;color:#7D5F4E;margin-top:6px;text-align:center"></div>
+    <div id="r-prov" style="display:none;font-size:11px;color:#7D5F4E;margin-top:4px;text-align:center"></div>
     <button class="btn-pri" onclick="compartirWhatsApp()" style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px">📤 Enviar / Imprimir reporte</button>
     <div class="grf-w"><div class="grf-t">Ingresos vs Gastos</div><div class="grf-bars" id="grf-bars"></div>
       <div style="display:flex;gap:14px;margin-top:10px;justify-content:center">
@@ -1027,6 +1028,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     </div>
     <div id="cierre-desg" style="display:none;font-size:11px;color:#7D5F4E;text-align:center;margin:-4px 0 8px"></div>
     <div id="cierre-ahorro" style="display:none;font-size:13px;color:#4E7A52;font-weight:600;text-align:center;margin-bottom:10px"></div>
+    <div id="cierre-prov" style="display:none;font-size:11px;color:#7D5F4E;text-align:center;margin:-4px 0 10px"></div>
     <!-- Sobres destacados -->
     <div class="cierre-seccion">
       <div class="cierre-sec-tit">¿En qué se fue?</div>
@@ -1914,6 +1916,7 @@ function irA(id) {
 
 // ════ UI ══════════════════════════════════════════
 function actualizarUI() {
+  if (aplicarApartados()) guardar(); // fondo de recibos no mensuales (Bloque 7)
   var p = E.perfil;
   var nom = p.nom || 'Amiga';
   var h = new Date().getHours();
@@ -2247,11 +2250,12 @@ function renderCasa(cont, s) {
   } else {
     activos.forEach(function(s) {
       var e = s.est;
-      html += '<div class="srv '+e.col+'">'+
+      html += '<div class="srv '+e.col+'"'+estiloRevisar(s)+'>'+
         '<div class="srv-ico">'+s.ico+'</div>'+
         '<div style="flex:1"><div class="srv-n">'+escHtml(s.nom)+'</div><div class="srv-d">Día '+s.dia+' · '+(PERIODOS[s.per]?PERIODOS[s.per].lb:s.per)+(s.mto?' · '+fmx(s.mto):'')+'</div>'+
         (e.detalle ? '<div class="srv-d" style="color:'+(e.tipo==='vencido'?'#B5543C':'#7D5F4E')+';font-weight:600">'+escHtml(e.detalle)+'</div>' : '')+
         avisoSobreSrv(s)+
+        (txtFondoSrv(s) ? '<div class="srv-d" style="color:#4E7A52;font-weight:600">'+escHtml(txtFondoSrv(s))+'</div>' : '')+
         botonesSrv(s)+'</div>'+
         '<div class="srv-bdg '+e.col+'">'+escHtml(e.txt)+'</div>'+
         btnEditarSrv(s.idx)+
@@ -2259,8 +2263,9 @@ function renderCasa(cont, s) {
     });
     if (lejanos.length) {
       lejanos.forEach(function(s) {
-        html += '<div class="srv-lejano"><div style="font-size:18px">'+s.ico+'</div>'+
-          '<div style="flex:1;font-size:12px;color:#3D2B1F">'+escHtml(s.nom)+avisoSobreSrv(s)+'</div>'+
+        html += '<div class="srv-lejano"'+estiloRevisar(s)+'><div style="font-size:18px">'+s.ico+'</div>'+
+          '<div style="flex:1;font-size:12px;color:#3D2B1F">'+escHtml(s.nom)+avisoSobreSrv(s)+
+          (txtFondoSrv(s) ? '<div style="font-size:11px;color:#4E7A52;font-weight:600">'+escHtml(txtFondoSrv(s))+'</div>' : '')+'</div>'+
           '<div style="font-size:11px;color:#7D5F4E;text-align:right">'+escHtml(s.est.txt)+
           (tienePagosSrv(s) ? '<div style="font-size:11px;font-weight:600;color:#4E7A52">✓ Al corriente</div>' : '')+
           botonesSrv(s)+
@@ -2334,6 +2339,7 @@ function abrirModalEdicionTransaccion(id) {
   for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === id) { r = E.regs[i]; break; } }
   if (!r) return;
   if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
+  if (movDeFondo(r)) return;
   dlg({
     e:'✏️', t:'Editar monto',
     inf: '📝 ' + (r.nota || 'Sin nota') + '\nMonto actual: ' + fmx(r.mto),
@@ -2373,6 +2379,7 @@ function dlgEliminarTransaccion(id) {
   for (var i = 0; i < E.regs.length; i++) { if (E.regs[i].id === id) { r = E.regs[i]; break; } }
   if (!r) return;
   if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
+  if (movDeFondo(r)) return;
   dlg({
     e:'🗑', t:'Eliminar transacción',
     s:'¿Eliminar "' + (r.nota || 'esta transacción') + '" por ' + fmx(r.mto) + '? No se puede deshacer.',
@@ -2516,9 +2523,11 @@ function botonesSrv(s) {
     (puedeDeshacerPago(s) ? ' <button class="btn-marc pg" style="margin-top:0;margin-left:4px" onclick="desmarcarPagado('+s.idx+')">\u21A9 Deshacer</button>' : '')+
     '</div>';
 }
+// Servicio viejo que no se reconoció: queda en Casa › Luz y se marca para revisar.
 function avisoSobreSrv(s) {
-  return s.sobreRevisar ? '<div class="srv-d" style="color:#B07A1E;font-weight:600">\u26A0\uFE0F Revisa de qué sobre sale (\u270F\uFE0F)</div>' : '';
+  return s.sobreRevisar ? '<div class="srv-d" style="color:#9A5B00;font-weight:700;font-size:12px">\u26A0\uFE0F Revisa de qué sobre sale: toca \u270F\uFE0F</div>' : '';
 }
+function estiloRevisar(s) { return s.sobreRevisar ? ' style="box-shadow:inset 0 0 0 2px #E0A33A"' : ''; }
 // Pagos que se registraron juntos ("Pagar los 2") forman un grupo.
 function ultimoGrupoPagosSrv(s) {
   var ps = s.pagos || [];
@@ -2726,15 +2735,18 @@ function dlgMontoPagoSrv(idx, n) {
   var vencs = [], v = s.proxVenc;
   for (var k = 0; k < n; k++) { vencs.push(v); v = sumarMesesVenc(v, m, s.dia); }
   var pend = recibosPendientes(s).length;
+  var fondoN = r2(vencs.reduce(function(t, x) { return t + fondoDe(s, x); }, 0));
   var rec = n === 1 ? 'Recibo del ' + fc(vencs[0]) + (pend >= 2 ? ' (1 de ' + pend + ' pendientes)' : '')
     : 'Recibos del ' + vencs.map(fc).join(' y ');
   dlg({e:'\u2705', t:'¿Ya pagaste?', s:'Escribe lo que pagaste. Si no lo sabes, deja el estimado.',
-    inf:s.ico + ' ' + s.nom + '\n' + rec + (est ? '\nEstimado: ' + fmx(r2(est * n)) : '') + '\nSe registra en ' + txtDestinoSrv(s),
+    inf:s.ico + ' ' + s.nom + '\n' + rec + (est ? '\nEstimado: ' + fmx(r2(est * n)) : '') + '\nSe registra en ' + txtDestinoSrv(s) +
+      (fondoN > 0 ? '\nDel fondo: ' + fmx(fondoN) + ' (solo se registra la diferencia)' : ''),
     inp:true, ph:'$ Monto pagado (0 = sin registrar gasto)', md:'decimal', val:est ? r2(est * n) : '',
     btns:[
       {l:'Sí, ya pagué ✓', c:'p', f:function(val){
         var real = val === '' ? 0 : r2(parseFloat(val));
         if (isNaN(real) || real < 0) { toast('Ingresa un monto válido'); return; }
+        if (fondoN > 0 && !(real > 0)) { toast('Escribe el monto de tu recibo'); return; }
         registrarPagoSrv(idx, n, real);
       }},
       {l:'Cancelar', c:'s', f:null}
@@ -2744,32 +2756,54 @@ function dlgMontoPagoSrv(idx, n) {
 // Un gasto por el monto real y un pago por recibo en el historial, del más
 // antiguo al más nuevo: cada uno toma su estimado y el último se queda con la
 // diferencia, así la suma de ajustes = real − suma de estimados.
+// Con fondo (Bloque 7) el recibo sale del fondo y solo se registra la línea
+// "Ajuste recibo real" = real − fondo (positiva o negativa) en el mes del pago.
 function registrarPagoSrv(idx, n, real) {
   var s = E.servicios[idx], est = Number(s.mto) || 0, m = mesesCicloSrv(s);
-  var ahoraIso = new Date().toISOString(), pagoId = 'pg_' + Date.now(), regId = null, per = periodoActual();
+  var ahoraIso = new Date().toISOString(), pagoId = 'pg_' + Date.now(), regId = null, regAjId = null, per = periodoActual();
   var dest = destinoSrv(s);
-  if (real > 0) {
-    regId = Date.now();
+  var vencs = [], v = s.proxVenc;
+  for (var k = 0; k < n; k++) { vencs.push(v); v = sumarMesesVenc(v, m, s.dia); }
+  var fondos = vencs.map(function(x) { return fondoDe(s, x); });
+  var totFondo = r2(fondos.reduce(function(t, f) { return t + f; }, 0)), aj = 0;
+  if (totFondo > 0) {
+    aj = r2(real - totFondo);
+    if (aj !== 0) {
+      regAjId = idRegNuevo();
+      E.regs.push({id:regAjId, sobre:dest.sobre, sub:dest.sub, mto:aj, nota:s.nom + ' — Ajuste recibo real', periodo:per, fecha:ahoraIso,
+        origen:{tipo:'ajusteRecibo', id:s.id, pagoId:pagoId}});
+    }
+  } else if (real > 0) {
+    regId = idRegNuevo();
     E.regs.push({id:regId, sobre:dest.sobre, sub:dest.sub, mto:real,
       nota:s.nom + ' — pago programado' + (n > 1 ? ' (' + n + ' recibos)' : ''), periodo:per, fecha:ahoraIso,
       origen:{tipo:'servicio', id:s.id, pagoId:pagoId}});
   }
+  // Historial: un pago por recibo, del más antiguo al más nuevo. Cada uno toma
+  // su estimado y el último se queda con la diferencia.
   if (!s.pagos) s.pagos = [];
-  var resto = real;
-  for (var k = 0; k < n; k++) {
-    var venc = s.proxVenc;
+  var resto = real, grupo = [];
+  for (k = 0; k < n; k++) {
     var mk = k === n - 1 ? resto : Math.min(est, resto);
     resto = r2(resto - mk);
-    var pg = {id:n > 1 ? pagoId + '_' + (k + 1) : pagoId, fecha:ahoraIso, venc:venc, ciclo:cicloDe(venc, m),
-      estimado:est, mto:mk, ajuste:est > 0 && real > 0 ? r2(mk - est) : 0, periodo:per, regId:regId, origen:'sobre'};
+    var pg = {id:n > 1 ? pagoId + '_' + (k + 1) : pagoId, fecha:ahoraIso, venc:vencs[k], ciclo:cicloDe(vencs[k], m),
+      estimado:est, mto:mk, ajuste:est > 0 && real > 0 ? r2(mk - est) : 0, periodo:per, regId:regId,
+      origen:totFondo > 0 ? 'fondo' : 'sobre', fondo:fondos[k], ajusteFondo:k === n - 1 ? aj : 0, regAjusteId:regAjId, estimadoPrevio:est};
     if (n > 1) pg.grupo = pagoId;
     s.pagos.push(pg);
-    s.proxVenc = sumarMesesVenc(venc, m, s.dia);
+    grupo.push(pg);
   }
+  s.proxVenc = v;
+  // Siguiente estimado = último recibo real (no mensuales); se cambia en Editar
+  if (m > 1 && real > 0) s.mto = grupo[n - 1].mto;
   s.ultimoPago = ahoraIso;
   limpiarPagoViejoSrv(s);
   guardar(); actualizarUI(); abrirSobre('casa');
-  toast('¡' + s.nom + ' pagado!' + (real > 0 ? ' ' + fmx(real) + ' registrado' : '') + ' ✓');
+  toast('¡' + s.nom + ' pagado!' +
+    (totFondo > 0 ? ' ' + fmx(totFondo) + ' del fondo' + (aj ? ' · ajuste ' + signoFmx(aj) : '')
+      : (real > 0 ? ' ' + fmx(real) + ' registrado' : '')) +
+    (m > 1 && real > 0 ? ' · siguiente estimado ' + fmx(s.mto) : '') + ' ✓');
+  revisarAjusteSobre(grupo, aj, dest);
 }
 // Datos de deshacer de versiones anteriores (antes del historial de pagos).
 function limpiarPagoViejoSrv(s) {
@@ -2784,15 +2818,26 @@ function desmarcarPagado(idx) {
   if (!grupo.length) return;
   if (mesEstaCerrado(grupo[0].periodo)) { avisoMesCerrado(grupo[0].periodo); return; }
   if (!puedeDeshacerPago(s)) return;
-  var regId = grupo[0].regId, reg = null;
+  var regId = grupo[0].regId, reg = null, regAj = null, ajId = grupo[0].regAjusteId;
   if (regId !== null && regId !== undefined) E.regs.forEach(function(r) { if (r.id === regId) reg = r; });
+  if (ajId) E.regs.forEach(function(r) { if (r.id === ajId) regAj = r; });
+  var fondoG = r2(grupo.reduce(function(t, p) { return t + (Number(p.fondo) || 0); }, 0));
   dlg({e:'\u21A9\uFE0F',t:'¿Deshacer pago?',
     inf:s.ico+' '+s.nom+'\n'+(grupo.length > 1 ? 'Recibos del ' : 'Recibo del ')+
       grupo.map(function(p) { return fechaCorta(p.venc + 'T12:00:00'); }).join(' y ')+
-      (reg?'\nSe eliminará el registro de '+fmx(reg.mto):''),
+      (reg?'\nSe eliminará el registro de '+fmx(reg.mto):'')+
+      (regAj?'\nSe eliminará el ajuste de '+signoFmx(regAj.mto):'')+
+      (fondoG > 0?'\nLos '+fmx(fondoG)+' vuelven a quedar apartados':''),
     btns:[
       {l:'Sí, deshacer',c:'p',f:function(){
         if (reg) E.regs = E.regs.filter(function(r){ return r !== reg; });
+        if (regAj) E.regs = E.regs.filter(function(r){ return r !== regAj; });
+        if (grupo[0].estimadoPrevio !== undefined) s.mto = grupo[0].estimadoPrevio;
+        grupo.forEach(function(p) {
+          if (!p.movido || !E.limsExtraMes) return;
+          E.limsExtraMes[p.movido.de] = r2((E.limsExtraMes[p.movido.de] || 0) + p.movido.mto);
+          E.limsExtraMes[p.movido.a] = r2((E.limsExtraMes[p.movido.a] || 0) - p.movido.mto);
+        });
         s.pagos = s.pagos.filter(function(p){ return grupo.indexOf(p) === -1; });
         // El recibo más antiguo del grupo vuelve a quedar sin pagar
         s.proxVenc = grupo[0].venc;
@@ -2839,6 +2884,8 @@ function dlgProxVencSrv(idx, op) {
   var o = opcionesVencSrv(s);
   var fc = function(v) { return fechaCorta(v + 'T12:00:00'); };
   var listo = function(v) {
+    var viejo = s.proxVenc;
+    if (viejo && viejo !== v) moverFondoSrv(s, function() { return v; });
     s.proxVenc = v; s.vencPreguntado = true;
     guardar(); actualizarUI();
     if (!op.inicio) abrirSobre('casa');
@@ -2869,6 +2916,159 @@ function preguntarVencPendientes() {
       return;
     }
   }
+}
+
+// ── FONDO PARA RECIBOS NO MENSUALES (Bloque 7) ──
+// En los meses anteriores al vencimiento se aparta estimado / meses del ciclo
+// como gasto del sobre del servicio (cuenta en "Salió"). Bimestral que vence el
+// 5 ene: se aparta en noviembre y diciembre. Al pagar, el recibo sale del fondo
+// y solo se registra la diferencia ("Ajuste recibo real").
+// provision: {desde:'YYYY-MM', apartados:[{venc, mes, periodo, k, de, mto, regId}]}
+var _ultIdReg = 0;
+function idRegNuevo() { var t = Date.now(); _ultIdReg = t > _ultIdReg ? t : _ultIdReg + 1; return _ultIdReg; }
+function usaFondo(s) { return mesesCicloSrv(s) > 1 && (Number(s.mto) || 0) > 0 && !!s.proxVenc; }
+function apartadosSrv(s) { return (s.provision && s.provision.apartados) || []; }
+function fondoDe(s, venc) {
+  return r2(apartadosSrv(s).reduce(function(t, a) { return t + (a.venc === venc ? (Number(a.mto) || 0) : 0); }, 0));
+}
+function vencsPagadosSrv(s) { return (s.pagos || []).map(function(p) { return p.venc; }); }
+// Lo apartado para recibos que todavía no se pagan.
+function fondoPendienteSrv(s) {
+  var pag = vencsPagadosSrv(s);
+  return r2(apartadosSrv(s).reduce(function(t, a) { return t + (pag.indexOf(a.venc) === -1 ? (Number(a.mto) || 0) : 0); }, 0));
+}
+// Mes k de m: estimado / m redondeado; el último completa el estimado con lo
+// ya apartado (o lo que tocaba en los meses sin apartado) para que la suma sea
+// exacta. Lo que falte (fondo incompleto) lo cubre el ajuste al pagar.
+function montoApartado(s, venc, k, m) {
+  var est = Number(s.mto) || 0, base = r2(est / m);
+  if (k < m) return base;
+  var previo = 0;
+  for (var j = 1; j < m; j++) {
+    var a = apartadosSrv(s).filter(function(x) { return x.venc === venc && x.k === j; })[0];
+    previo += a ? (Number(a.mto) || 0) : base;
+  }
+  return Math.max(0, r2(est - previo));
+}
+// Automático al abrir y en cada actualización: una vez por recibo y mes del
+// ciclo. Los meses que faltaron (no abrió la app) se apartan en el mes actual
+// como "Apartado pendiente de [mes]", solo para recibos sin pagar y desde que
+// empezó el fondo. Los meses cerrados no se tocan. En modo consulta no se aparta.
+function aplicarApartados() {
+  if (!puedeEscribir()) return false;
+  var ym = periodoActual(), n = ymNum(ym), cambio = false;
+  if (mesEstaCerrado(ym)) return false;
+  (E.servicios || []).forEach(function(s) {
+    if (!usaFondo(s)) return;
+    if (!s.provision) s.provision = {};
+    if (!s.provision.apartados) s.provision.apartados = [];
+    // Servicios que ya existían (o que recién usan fondo): empiezan el mes siguiente
+    if (!s.provision.desde) { s.provision.desde = ymDeNum(n + 1); cambio = true; return; }
+    var desde = ymNum(s.provision.desde), m = mesesCicloSrv(s), v = s.proxVenc;
+    for (var i = 0; i < 30 && v; i++) {
+      var vn = ymNum(v.slice(0, 7));
+      if (vn - m > n) break;
+      for (var k = 1; k <= m; k++) {
+        var pm = vn - m + k - 1;
+        if (pm > n) break;
+        if (pm < desde) continue;
+        if (apartadosSrv(s).some(function(a) { return a.venc === v && a.k === k; })) continue;
+        var mto = montoApartado(s, v, k, m);
+        if (!(mto > 0)) continue;
+        var d = destinoSrv(s), regId = idRegNuevo();
+        var nota = pm < n ? 'apartado pendiente de ' + MESES_NOM[pm % 12].toLowerCase() : 'apartado ' + k + ' de ' + m;
+        E.regs.push({id:regId, sobre:d.sobre, sub:d.sub, mto:mto,
+          nota:s.nom + ' — ' + nota + ' (recibo ' + fechaCorta(v + 'T12:00:00') + ')',
+          periodo:ym, fecha:new Date().toISOString(), origen:{tipo:'apartado', id:s.id, venc:v}});
+        s.provision.apartados.push({venc:v, mes:ymDeNum(pm), periodo:ym, k:k, de:m, mto:mto, regId:regId});
+        cambio = true;
+      }
+      v = sumarMesesVenc(v, m, s.dia);
+    }
+  });
+  return cambio;
+}
+// Regresa al disponible lo apartado para recibos sin pagar (eliminar el
+// servicio o cambiar cada cuánto se paga): una línea negativa en el mes actual.
+function liberarFondoSrv(s) {
+  var f = fondoPendienteSrv(s);
+  if (!(f > 0)) return 0;
+  var d = destinoSrv(s), pag = vencsPagadosSrv(s);
+  E.regs.push({id:idRegNuevo(), sobre:d.sobre, sub:d.sub, mto:-f, nota:s.nom + ' — Fondo liberado',
+    periodo:periodoActual(), fecha:new Date().toISOString(), origen:{tipo:'fondoLiberado', id:s.id}});
+  s.provision.apartados = apartadosSrv(s).filter(function(a) { return pag.indexOf(a.venc) !== -1; });
+  return f;
+}
+// Al corregir la fecha del recibo, lo apartado sin pagar pasa a la fecha nueva.
+function moverFondoSrv(s, fn) {
+  var pag = vencsPagadosSrv(s);
+  apartadosSrv(s).forEach(function(a) { if (pag.indexOf(a.venc) === -1) a.venc = fn(a.venc); });
+}
+function txtFondoSrv(s) {
+  if (!usaFondo(s)) return '';
+  return '\uD83D\uDCB0 ' + fmx(fondoDe(s, s.proxVenc)) + ' de ' + fmx(s.mto) + ' apartados';
+}
+function signoFmx(n) { return (n > 0 ? '+' : '') + fmx(n); }
+// Ajuste positivo mayor que lo que queda en el sobre: avisar y ofrecer tomar
+// la diferencia del límite de otro sobre (solo este mes).
+function revisarAjusteSobre(grupo, aj, dest) {
+  if (!(aj > 0) || !(E.lims[dest.sobre] > 0)) return;
+  var queda = r2(limEfectivo(dest.sobre) - calcGS(dest.sobre) + aj);
+  if (aj <= queda) return;
+  var falta = r2(aj - Math.max(0, queda)), nomS = nombreSobreId(dest.sobre);
+  var btns = sobresDeGasto().filter(function(x) {
+    return x.id !== dest.sobre && E.lims[x.id] > 0 && r2(limEfectivo(x.id) - calcGS(x.id)) >= falta;
+  }).map(function(x) {
+    return {l:x.ico + ' ' + x.cor + ' · quedan ' + fmx(r2(limEfectivo(x.id) - calcGS(x.id))), c:'s', f:function(){
+      if (!E.limsExtraMes) E.limsExtraMes = {};
+      E.limsExtraMes[x.id] = r2((E.limsExtraMes[x.id] || 0) - falta);
+      E.limsExtraMes[dest.sobre] = r2((E.limsExtraMes[dest.sobre] || 0) + falta);
+      grupo[grupo.length - 1].movido = {de:x.id, a:dest.sobre, mto:falta};
+      guardar(); actualizarUI(); abrirSobre('casa');
+      toast(fmx(falta) + ' de ' + x.cor + ' a ' + nomS + ' ✓');
+    }};
+  });
+  var hay = btns.length > 0;
+  btns.push({l:hay ? 'Dejarlo así' : 'Entendido', c:'s', f:null});
+  dlg({e:'\u26A0\uFE0F', t:'No alcanza en ' + nomS,
+    s:'El ajuste de ' + fmx(aj) + ' es mayor que lo que queda en ' + nomS + ' (' + fmx(Math.max(0, queda)) + ').' +
+      (hay ? ' ¿De dónde tomo los ' + fmx(falta) + '?' : ' Ningún otro sobre tiene ' + fmx(falta) + ' disponibles.'),
+    btns:btns});
+}
+// Apartados, ajustes y fondo liberado se manejan desde el servicio.
+function movDeFondo(r) {
+  var t = r.origen && r.origen.tipo;
+  if (t !== 'apartado' && t !== 'ajusteRecibo' && t !== 'fondoLiberado') return false;
+  var sv = (E.servicios || []).filter(function(x) { return x.id === r.origen.id; })[0];
+  dlg({e:'\uD83D\uDD12', t:'Se maneja desde el servicio' + (sv ? ' ' + sv.nom : ''),
+    s:'Este movimiento es parte del fondo para su recibo. Para cambiarlo usa "Deshacer" o \u270F\uFE0F en Casa & Servicios.',
+    btns:[{l:'Entendido', c:'p', f:null}]});
+  return true;
+}
+// Cierre, Mi Historia y Reporte: apartados, ajustes y pagos desde el fondo por
+// separado (lo pagado desde fondos ya se contó al apartar).
+function provisionesMes(regs, ym) {
+  var p = {apartados:0, ajustes:0, liberado:0, pagadoFondo:0};
+  regs.forEach(function(r) {
+    var t = r.origen && r.origen.tipo, x = Number(r.mto) || 0;
+    if (t === 'apartado') p.apartados += x;
+    else if (t === 'ajusteRecibo') p.ajustes += x;
+    else if (t === 'fondoLiberado') p.liberado += x;
+  });
+  (E.servicios || []).forEach(function(sv) {
+    (sv.pagos || []).forEach(function(pg) { if (pg.periodo === ym && pg.fondo) p.pagadoFondo += pg.fondo; });
+  });
+  for (var k in p) p[k] = r2(p[k]);
+  return p;
+}
+function txtProvisiones(p) {
+  if (!p) return '';
+  var t = [];
+  if (p.apartados) t.push('Apartado para recibos ' + fmx(p.apartados));
+  if (p.ajustes) t.push('Ajuste recibo real ' + signoFmx(p.ajustes));
+  if (p.liberado) t.push('Fondo liberado ' + fmx(p.liberado));
+  if (p.pagadoFondo) t.push('Pagado desde fondos ' + fmx(p.pagadoFondo) + ' (ya contado)');
+  return t.join(' · ');
 }
 
 // ── SOBRE Y CATEGORÍA DEL SERVICIO (M8) ──
@@ -2948,7 +3148,7 @@ function terminarAltaSrv(idx) {
   var fecha = function() { if (!s.proxVenc) dlgProxVencSrv(idx); };
   var d = detectarSobreSrv(s.nom);
   if (d) { s.sobre = d.sobre; s.sub = d.sub; }
-  guardar(); abrirSobre('casa'); renderBanSrv();
+  guardar(); actualizarUI(); abrirSobre('casa');
   if (d) { toast(s.nom + ' agregado · se registra en ' + txtDestinoSrv(s)); fecha(); }
   else dlgSobreSrv(idx, {alta:true, despues:fecha});
 }
@@ -2990,6 +3190,7 @@ function proxVencMensual(s) {
 function nuevoServicio(preset, dia, per, mto) {
   var s = {id:'srv_' + Date.now(), v:2, ico:preset.ico, nom:preset.nom, per:per, dia:dia, proxVenc:null,
     sobre:null, sub:null, mto:mto, provision:null, pagos:[]};
+  if (mesesCicloSrv(s) > 1) s.provision = {desde:periodoActual(), apartados:[]};
   if (mesesCicloSrv(s) === 1) s.proxVenc = proxVencNuevoMensual(s);
   return s;
 }
@@ -3044,7 +3245,10 @@ function txtCiclo(c) {
 function cambiarVencSrv(idx, campo, val) {
   var s = E.servicios[idx];
   s[campo] = val;
-  if (campo === 'dia' && s.proxVenc) s.proxVenc = sumarMesesVenc(s.proxVenc, 0, val);
+  if (campo === 'dia' && s.proxVenc) {
+    s.proxVenc = sumarMesesVenc(s.proxVenc, 0, val);
+    moverFondoSrv(s, function(v) { return sumarMesesVenc(v, 0, val); });
+  }
   if (campo === 'per') {
     if (mesesCicloSrv(s) !== 1) s.proxVenc = null; // por confirmar
     else if (!s.proxVenc) s.proxVenc = proxVencNuevoMensual(s);
@@ -3100,7 +3304,7 @@ function dlgEditarSrvMonto(idx) {
         var val = v === '' ? 0 : r2(parseFloat(v));
         if (isNaN(val) || val < 0) { toast('Ingresa un monto válido'); return; }
         s.mto = val;
-        guardar(); abrirSobre('casa');
+        guardar(); actualizarUI(); abrirSobre('casa');
         toast(s.nom + ': ' + (val ? fmx(val) : 'sin monto') + ' ✓');
       }},
       {l:'Cancelar', c:'s', f:null}
@@ -3129,6 +3333,21 @@ function dlgEditarSrvPer(idx) {
   var btns = Object.keys(PERIODOS).map(function(k) {
     return {l:(k === s.per ? '✓ ' : '') + PERIODOS[k].lb, c:k === s.per ? 'p' : 's', f:function(){
       if (k === s.per) return;
+      var fondo = fondoPendienteSrv(s);
+      if (fondo > 0) {
+        dlg({e:'\uD83D\uDCB0', t:'¿Cambiar a ' + PERIODOS[k].lb + '?',
+          s:'Tienes ' + fmx(fondo) + ' apartados para ' + s.nom + '. Al cambiar, regresan a tu disponible de ' + nombreSobreId(destinoSrv(s).sobre) + '.',
+          btns:[
+            {l:'Sí, cambiar', c:'p', f:function(){
+              liberarFondoSrv(s);
+              cambiarVencSrv(idx, 'per', k);
+              actualizarUI();
+              toast(s.nom + ': ' + PERIODOS[k].lb + ' · ' + fmx(fondo) + ' regresan a tu disponible ✓');
+            }},
+            {l:'Cancelar', c:'s', f:null}
+          ]});
+        return;
+      }
       cambiarVencSrv(idx, 'per', k);
       toast(s.nom + ': ' + PERIODOS[k].lb + ' ✓');
     }};
@@ -3143,7 +3362,8 @@ function dlgPagosSrv(idx) {
     return fechaCorta(p.fecha) + ' · ' +
       (p.mto === null ? 'monto no registrado' : p.mto > 0 ? fmx(p.mto) : 'sin monto') +
       (p.ajuste && p.estimado !== null ? ' (estimado ' + fmx(p.estimado) + ', ' + (p.ajuste > 0 ? '+' : '') + fmx(p.ajuste) + ')' : '') +
-      (p.ciclo ? ' · cubre ' + txtCiclo(p.ciclo) : '');
+      (p.ciclo ? ' · cubre ' + txtCiclo(p.ciclo) : '') +
+      (p.fondo ? ' · del fondo ' + fmx(p.fondo) : '');
   }).join('\n') : 'Todavía no has marcado pagos de este servicio.';
   dlg({e:'\uD83D\uDCCB', t:'Pagos de ' + s.nom, inf:txt, btns:[{l:'Cerrar', c:'s', f:null}]});
 }
@@ -3165,9 +3385,12 @@ function dlgEliminarSrv(idx) {
   } else {
     msg = 'Dejarás de recibir sus avisos. Lo que ya pagaste no cambia.';
   }
+  var fondo = fondoPendienteSrv(s);
+  if (fondo > 0) msg += ' Tienes ' + fmx(fondo) + ' apartados para ' + s.nom + ': regresan a tu disponible de ' + nombreSobreId(destinoSrv(s).sobre) + '.';
   dlg({e:'\uD83D\uDDD1', t:'¿Eliminar ' + s.nom + '?', s:msg,
     btns:[
       {l:'Sí, eliminar', c:'d', f:function(){
+        liberarFondoSrv(s);
         E.servicios = E.servicios.filter(function(x) { return x !== s; });
         guardar(); actualizarUI(); abrirSobre('casa'); renderBanSrv();
         toast(s.nom + ' eliminado');
@@ -3822,6 +4045,12 @@ function renderReportes() {
     var txtR = esSem ? (entMes > 0 ? 'Tu mes (' + fmx(entMes) + ') entre ' + diasMesPer + ' días, por 7' : '') : desgloseEntroActual();
     rDesg.textContent = txtR ? (esSem ? txtR : 'Entró: ' + txtR) : '';
     rDesg.style.display = txtR ? 'block' : 'none';
+  }
+  var rPr = document.getElementById('r-prov');
+  if (rPr) {
+    var txtPr = esSem ? '' : txtProvisiones(provisionesMes(E.regs.filter(function(r) { return periodoDe(r) === periodoActual(); }), periodoActual()));
+    rPr.textContent = txtPr ? '\uD83E\uDDFE ' + txtPr : '';
+    rPr.style.display = txtPr ? 'block' : 'none';
   }
   st('r-ent', fmx(mto));
   st('r-sal', fmx(gasto));
@@ -4736,6 +4965,8 @@ function prepararCierre() {
   if (cDesg) { var txtC = desgloseEntroActual(); cDesg.textContent = txtC ? 'Entró: ' + txtC : ''; cDesg.style.display = txtC ? 'block' : 'none'; }
   var cAh = document.getElementById('cierre-ahorro');
   if (cAh) { var txtA = txtAhorraste(calcAhorro(regsDeMes(mesIdx, anio))); cAh.textContent = txtA ? '\uD83D\uDCB0 ' + txtA : ''; cAh.style.display = txtA ? 'block' : 'none'; }
+  var cPr = document.getElementById('cierre-prov');
+  if (cPr) { var txtP = txtProvisiones(provisionesMes(regsDeMes(mesIdx, anio), ymDeNum(anio * 12 + mesIdx))); cPr.textContent = txtP ? '\uD83E\uDDFE ' + txtP : ''; cPr.style.display = txtP ? 'block' : 'none'; }
 
   // Sobres — top 4 con más gasto
   var items = todosSobres()
@@ -4860,6 +5091,8 @@ function archivarMes(mesIdx, anio, mto) {
     }),
     racha: (E.gamif && E.gamif.racha) || 0
   };
+  var prov = provisionesMes(regsDeMes(mesIdx, anio), ym);
+  if (txtProvisiones(prov)) snapshot.provisiones = prov;
   // Desglose de "Entró" (los callers archivan antes de limpiar arrastre y extra)
   var dIng = Number(E.perfil.mto) || 0, dArr = Number(E.saldoArrastrado) || 0, dExt = Number(E.ingresoExtraMes) || 0;
   if (r2(dIng + dArr + dExt) === r2(mto)) { snapshot.ing = dIng; snapshot.arr = dArr; snapshot.ext = dExt; }
@@ -5659,6 +5892,8 @@ function renderHistoria() {
         (ahorroDeHistoria(item) > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83D\uDCB0 Ahorraste</span>' +
             '<span class="historia-dato-val pos">' + fmx(ahorroDeHistoria(item)) + '</span></div>' : '') +
+        (item.provisiones && txtProvisiones(item.provisiones)
+          ? '<div style="font-size:11px;color:#7D5F4E;margin:4px 0">\uD83E\uDDFE ' + escHtml(txtProvisiones(item.provisiones)) + '</div>' : '') +
         (item.sobres && item.sobres.length
           ? '<div style="margin-top:8px;font-size:10px;color:#7D5F4E;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Top gastos</div>' +
             item.sobres.slice(0,3).map(function(s) {
