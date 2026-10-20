@@ -1832,11 +1832,14 @@ function dlgEditarLimites() {
     '<button onclick="cerrarEditarLimites()" aria-label="Cerrar" style="background:var(--crd);border:none;width:32px;height:32px;border-radius:50%;font-size:16px;color:var(--cam);flex-shrink:0">✕</button>' +
     '</div>' +
     '<div style="padding:0 20px 12px;font-size:12px;color:#7D5F4E">"Sin límite" significa sin control — ponle un tope a cada uno.</div>' +
+    '<div id="lim-cont" style="padding:0 20px 12px;font-size:12px;font-weight:600"></div>' +
     '<div style="padding:0 20px calc(20px + env(safe-area-inset-bottom))">' + filas +
     '<button class="btn-pri" onclick="guardarLimitesEditados()" style="width:100%;margin-top:6px">Guardar límites</button>' +
     '</div></div>';
   document.body.appendChild(mo);
   mo.addEventListener('click', function(e) { if (e.target === mo) cerrarEditarLimites(); });
+  mo.addEventListener('input', recalcLimCont);
+  recalcLimCont();
 }
 function cerrarEditarLimites() {
   var mo = document.getElementById('mo-limites');
@@ -2011,7 +2014,17 @@ function actualizarUI() {
   renderAgendaResumen();
   var ssinL = todosSobres().filter(function(s) { return !s.esMetas && !s.esAhorro && !s.esTanda && !s.esPr && !E.lims[s.id]; });
   var bc = document.getElementById('ban-cfg');
-  if (bc) bc.style.display = ssinL.length > 0 ? 'flex' : 'none';
+  if (bc) {
+    var sa = sinAsignar(), ico = '\uD83C\uDFAF', tit = 'Asigna límites a tus sobres',
+      sub = '"Sin límite" significa sin control — ponle un tope a cada uno', ver = ssinL.length > 0;
+    if (sa <= -1) { ico = '\u26A0\uFE0F'; tit = 'Tus sobres suman ' + fmx(-sa) + ' más de lo que entró este mes'; sub = 'Ajusta tus límites'; ver = true; }
+    else if (sa >= 1) { ico = '\uD83D\uDCB0'; tit = 'Tienes ' + fmx(sa) + ' sin asignar'; sub = 'Repártelo entre tus sobres'; ver = true; }
+    bc.style.display = ver ? 'flex' : 'none';
+    var bIco = bc.querySelector('div'), bTit = bc.querySelector('.ban-tit'), bSub = bc.querySelector('.ban-sub');
+    if (bIco) bIco.textContent = ico;
+    if (bTit) bTit.textContent = tit;
+    if (bSub) bSub.textContent = sub;
+  }
 }
 
 function chkCumple() {
@@ -3422,19 +3435,110 @@ function dlgNuevoSobre() {
   });
 }
 
+// Borrar un sobre propio (E5): sus gastos de meses abiertos, su límite del mes
+// (base + extra, como extra temporal) y sus servicios pasan al sobre que elija.
+// Los meses cerrados no se tocan. Desde el mes siguiente esa base queda "sin
+// asignar" (ver sinAsignar()).
 function dlgElimSobre(id) {
   if (!exigirEscritura()) return; // modo consulta
   var s = (E.custom||[]).filter(function(x){return x.id===id;})[0];
   if (!s) return;
-  dlg({e:'🗑',t:'Eliminar sobre',s:'¿Eliminar "'+s.cor+'"? Se perderán sus categorías. No se puede deshacer.',
-    btns:[
-      {l:'Sí, eliminar',c:'d',f:function(){
-        E.custom = E.custom.filter(function(x){return x.id!==id;});
-        guardar(); renderSobres(); toast('Sobre "'+s.cor+'" eliminado');
-      }},
-      {l:'Cancelar',c:'s',f:null}
-    ]
+  var regs = E.regs.filter(function(r) { return r.sobre === id && !mesEstaCerrado(periodoDe(r)); });
+  var gasto = r2(regs.reduce(function(t, r) { return t + (Number(r.mto) || 0); }, 0));
+  var lim = limEfectivo(id);
+  var srvs = (E.servicios || []).filter(function(x) { return x.sobre === id; });
+  if (!regs.length && !lim && !srvs.length) {
+    dlg({e:'\uD83D\uDDD1',t:'Eliminar sobre',s:'¿Eliminar "'+s.cor+'"? Se perderán sus categorías. No se puede deshacer.',
+      btns:[
+        {l:'Sí, eliminar',c:'d',f:function(){ borrarSobrePropio(id, null); }},
+        {l:'Cancelar',c:'s',f:null}
+      ]
+    });
+    return;
+  }
+  var pasa = [];
+  if (regs.length) pasa.push('sus gastos de este mes (' + fmx(gasto) + ')');
+  if (lim) pasa.push('su límite del mes (' + fmx(lim) + ')');
+  if (srvs.length) pasa.push(srvs.length === 1 ? 'el servicio ' + srvs[0].nom : srvs.length + ' servicios');
+  var btns = sobresDeGasto().filter(function(x) { return x.id !== id; }).map(function(x) {
+    return {l:x.ico + ' ' + x.cor, c:'s', f:function(){
+      dlg({e:'\uD83D\uDDD1', t:'¿Eliminar ' + s.cor + '?',
+        s:'Todo pasa a ' + x.cor + '. Se perderán sus categorías. No se puede deshacer.',
+        btns:[
+          {l:'Sí, eliminar', c:'d', f:function(){ borrarSobrePropio(id, x.id); }},
+          {l:'Cancelar', c:'s', f:null}
+        ]});
+    }};
   });
+  btns.push({l:'Cancelar', c:'s', f:null});
+  dlg({e:'\uD83D\uDDD1', t:'¿A qué sobre pasa lo de ' + s.cor + '?',
+    s:'Pasan ' + pasa.join(', ') + '. Los meses cerrados no cambian.', btns:btns});
+}
+function borrarSobrePropio(id, dest) {
+  var s = (E.custom||[]).filter(function(x){return x.id===id;})[0];
+  if (!s) return;
+  if (dest) {
+    E.regs.forEach(function(r) {
+      if (r.sobre !== id || mesEstaCerrado(periodoDe(r))) return;
+      r.sobreOrig = id; r.subOrig = r.sub === undefined ? null : r.sub;
+      r.sobre = dest; r.sub = null;
+    });
+    // El límite del mes (base + extra) pasa completo como extra temporal
+    var lim = limEfectivo(id), base = Number(E.lims[id]) || 0;
+    if (lim) {
+      if (!E.limsExtraMes) E.limsExtraMes = {};
+      E.limsExtraMes[dest] = r2((E.limsExtraMes[dest] || 0) + lim);
+    }
+    if (base > 0) E.baseLiberadaMes = r2((Number(E.baseLiberadaMes) || 0) + base);
+    (E.servicios || []).forEach(function(sv) {
+      if (sv.sobre === id) { sv.sobre = dest; sv.sub = null; sv.sobreRevisar = true; }
+    });
+  }
+  delete E.lims[id];
+  if (E.limsExtraMes) delete E.limsExtraMes[id];
+  if (E.subsCB) delete E.subsCB[id];
+  E.custom = E.custom.filter(function(x){return x.id!==id;});
+  if (E.sobreA === id) E.sobreA = null;
+  guardar(); actualizarUI(); renderSobres();
+  toast('Sobre "' + s.cor + '" eliminado' + (dest ? ' · todo pasó a ' + nombreSobreId(dest) : ''));
+}
+
+// ── Sobres que ya no existen ("Sobre eliminado") ──
+// Gastos que apuntan a un sobre borrado con versiones anteriores: se suman en
+// un renglón aparte para que el desglose cuadre con "Salió".
+var SOBRE_ELIMINADO = {id:'_eliminado', ico:'\uD83D\uDDC2', nom:'Sobre eliminado', cor:'Sobre eliminado'};
+function esDeSobre(r, id) {
+  if (id !== '_eliminado') return r.sobre === id;
+  return !todosSobres().some(function(x) { return x.id === r.sobre; });
+}
+function sobresYEliminado() { return todosSobres().concat([SOBRE_ELIMINADO]); }
+
+// ── Dinero sin asignar ──
+// Ingreso del mes menos los límites base (y la base liberada este mes al
+// borrar un sobre). Los extras y el arrastre se reparten aparte.
+// > 0: sin asignar; < 0: los sobres suman más de lo que entró.
+function sinAsignar() {
+  var mto = Number(E.perfil && E.perfil.mto) || 0;
+  if (!(mto > 0)) return 0;
+  var suma = Number(E.baseLiberadaMes) || 0;
+  todosSobres().forEach(function(x) {
+    if (x.esMetas || x.esTanda || x.esPr) return;
+    suma += Number(E.lims[x.id]) || 0;
+  });
+  return r2(mto - suma);
+}
+// Contador del editor de límites (se actualiza al escribir).
+function recalcLimCont() {
+  var el = document.getElementById('lim-cont');
+  if (!el) return;
+  var mto = Number(E.perfil.mto) || 0, tot = Number(E.baseLiberadaMes) || 0;
+  var inps = document.querySelectorAll('#mo-limites .swi-val');
+  for (var i = 0; i < inps.length; i++) tot += r2(parseFloat(inps[i].value)) || 0;
+  tot = r2(tot);
+  var dif = r2(mto - tot);
+  el.textContent = 'Ingreso ' + fmx(mto) + ' · Asignado ' + fmx(tot) + ' · ' +
+    (dif <= -1 ? 'Asignaste ' + fmx(-dif) + ' de más' : 'Sin asignar ' + fmx(dif >= 1 ? dif : 0));
+  el.style.color = dif <= -1 ? '#D9534F' : '#4E7A52';
 }
 
 function dlgNuevaSubcat(sobreId) {
@@ -4082,7 +4186,7 @@ function renderReportes() {
   var ds=document.getElementById('desglose');
   if(ds){
     var gt=calcGT()||1;
-    var items=todosSobres().map(function(s){return{ico:s.ico,nom:s.cor,mto:calcGS(s.id)};}).filter(function(x){return x.mto>0;}).sort(function(a,b){return b.mto-a.mto;});
+    var items=sobresYEliminado().map(function(s){return{ico:s.ico,nom:s.cor,mto:calcGS(s.id)};}).filter(function(x){return x.mto>0;}).sort(function(a,b){return b.mto-a.mto;});
     ds.innerHTML=items.length?items.map(function(x){
       return '<div class="des-it"><div style="font-size:20px;width:28px;text-align:center">'+x.ico+'</div>'+
         '<div style="flex:1;font-size:13px;color:#3D2B1F">'+escHtml(x.nom)+'</div>'+
@@ -4414,7 +4518,7 @@ function initSwipe(id){
 
 // ════ CÁLCULOS ═══════════════════════════════════
 function calcGT(){var p=periodoActual();return r2(E.regs.filter(function(r){return periodoDe(r)===p;}).reduce(function(s,r){return s+(Number(r.mto)||0);},0));}
-function calcGS(id){var p=periodoActual();return r2(E.regs.filter(function(r){return r.sobre===id&&periodoDe(r)===p;}).reduce(function(s,r){return s+(Number(r.mto)||0);},0));}
+function calcGS(id){var p=periodoActual();return r2(E.regs.filter(function(r){return esDeSobre(r,id)&&periodoDe(r)===p;}).reduce(function(s,r){return s+(Number(r.mto)||0);},0));}
 function calcGSS(sid,ssid){var p=periodoActual();return r2(E.regs.filter(function(r){return r.sobre===sid&&r.sub===ssid&&periodoDe(r)===p;}).reduce(function(s,r){return s+(Number(r.mto)||0);},0));}
 
 // ── PERIODO CONTABLE ("YYYY-MM") ──
@@ -4969,7 +5073,7 @@ function prepararCierre() {
   if (cPr) { var txtP = txtProvisiones(provisionesMes(regsDeMes(mesIdx, anio), ymDeNum(anio * 12 + mesIdx))); cPr.textContent = txtP ? '\uD83E\uDDFE ' + txtP : ''; cPr.style.display = txtP ? 'block' : 'none'; }
 
   // Sobres — top 4 con más gasto
-  var items = todosSobres()
+  var items = sobresYEliminado()
     .map(function(s) { return {ico:s.ico, nom:s.cor, mto:calcGS(s.id), lim:limEfectivo(s.id)}; })
     .filter(function(x) { return x.mto > 0; })
     .sort(function(a,b) { return b.mto - a.mto; })
@@ -5055,7 +5159,7 @@ function calcGTMes(mesIdx, anio) {
   return r2(regsDeMes(mesIdx, anio).reduce(function(s, r) { return s + (Number(r.mto)||0); }, 0));
 }
 function calcGSMes(id, mesIdx, anio) {
-  return r2(regsDeMes(mesIdx, anio).filter(function(r) { return r.sobre === id; }).reduce(function(s, r) { return s + (Number(r.mto)||0); }, 0));
+  return r2(regsDeMes(mesIdx, anio).filter(function(r) { return esDeSobre(r, id); }).reduce(function(s, r) { return s + (Number(r.mto)||0); }, 0));
 }
 
 // Archiva un mes (mesIdx/anio) a E.historial y purga sus regs de E.regs.
@@ -5083,7 +5187,7 @@ function archivarMes(mesIdx, anio, mto) {
     // este registro es definitivo. Ningún flujo de la app edita datos
     // archivados; este campo lo deja explícito para el futuro.
     cerrado: true,
-    sobres: todosSobres().map(function(s) {
+    sobres: sobresYEliminado().map(function(s) {
       return {id:s.id, ico:s.ico, nom:s.cor, mto:calcGSMes(s.id, mesIdx, anio), lim:limEfectivo(s.id)};
     }).filter(function(x) { return x.mto > 0; }),
     metas: getMetas().map(function(m) {
@@ -5159,6 +5263,7 @@ function confirmarCierre() {
   // también se limpia — el límite base (E.lims) NUNCA se tocó, así que no hay
   // nada que "revertir" ahí.
   E.limsExtraMes = {};
+  E.baseLiberadaMes = 0;
   // Regla de arrastre (igual que el cierre automático de chkNuevoMes): el
   // sobrante o el déficit pasan al mes siguiente DESDE YA. Solo cambia si la
   // usuaria elige otra opción (meta o fondo); cerrar el diálogo lo conserva.
@@ -5790,7 +5895,7 @@ function compartirWhatsApp() {
     mto: mto,
     gasto: gasto,
     dif: r2(mto - gasto),
-    sobres: todosSobres().map(function(s) {
+    sobres: sobresYEliminado().map(function(s) {
       return {id:s.id, ico:s.ico, nom:s.cor, mto:calcGS(s.id), lim:limEfectivo(s.id)};
     }).filter(function(x) { return x.mto > 0; }),
     metas: getMetas().map(function(m) {
@@ -5999,6 +6104,7 @@ function chkNuevoMes() {
     E.tipoArrastre = snap.dif > 0 ? 'positivo' : snap.dif < 0 ? 'negativo' : null;
     E.ingresoExtraMes = 0;
     E.limsExtraMes = {};
+    E.baseLiberadaMes = 0;
     resumen = 'Guardamos ' + nomCerrado + ' en Mi Historia. ' +
       (snap.dif > 0 ? 'Te sobró ' + fmx(snap.dif) + ': pasa como saldo inicial de ' + nomMes + '. '
         : snap.dif < 0 ? 'Te pasaste ' + fmx(Math.abs(snap.dif)) + ': se descuenta de ' + nomMes + '. '
