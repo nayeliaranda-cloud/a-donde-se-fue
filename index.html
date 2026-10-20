@@ -838,6 +838,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
         <div class="d-chip" id="chip-arrastre" style="display:none"><div class="d-cl" id="arr-chip-lbl">Arrastre</div><div class="d-cv" id="arr-chip-val" style="color:#7A9E7E">$0</div></div>
       </div>
       <div id="d-desg" style="display:none;font-size:11px;opacity:.85;margin-top:6px"></div>
+      <div id="d-dmet" style="display:none;font-size:11px;opacity:.85;margin-top:2px"></div>
       <div class="hero-sobres" id="hero-sobres"></div>
     </div>
   </div>
@@ -924,6 +925,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div class="rep-c"><div class="rep-cl">Margen</div><div class="rep-cv" id="r-mg" style="color:#4E7A52">0%</div></div>
     </div>
     <div id="r-desg" style="display:none;font-size:11px;color:#7D5F4E;margin-top:6px;text-align:center"></div>
+    <div id="r-dmet" style="display:none;font-size:11px;color:#7D5F4E;margin-top:2px;text-align:center"></div>
     <div id="r-prov" style="display:none;font-size:11px;color:#7D5F4E;margin-top:4px;text-align:center"></div>
     <button class="btn-pri" onclick="compartirWhatsApp()" style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px">📤 Enviar / Imprimir reporte</button>
     <div class="grf-w"><div class="grf-t">Ingresos vs Gastos</div><div class="grf-bars" id="grf-bars"></div>
@@ -1027,6 +1029,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       </div>
     </div>
     <div id="cierre-desg" style="display:none;font-size:11px;color:#7D5F4E;text-align:center;margin:-4px 0 8px"></div>
+    <div id="cierre-dmet" style="display:none;font-size:11px;color:#7D5F4E;text-align:center;margin:-6px 0 8px"></div>
     <div id="cierre-ahorro" style="display:none;font-size:13px;color:#4E7A52;font-weight:600;text-align:center;margin-bottom:10px"></div>
     <div id="cierre-prov" style="display:none;font-size:11px;color:#7D5F4E;text-align:center;margin:-4px 0 10px"></div>
     <!-- Sobres destacados -->
@@ -1863,6 +1866,7 @@ function guardarLimitesEditados() {
 // ════ APP ═════════════════════════════════════════
 function iniciarApp() {
   if (normalizarServicios()) guardar(); // estructura v2 (también al restaurar)
+  if (normalizarMetas()) guardar(); // id de cada meta (ingresos extra, Fase 3)
   iniciarPruebaSiFalta();
   sincronizarHoraReal();
   actualizarUI();
@@ -1949,9 +1953,17 @@ function actualizarUI() {
 
   var dMtoEl = document.getElementById('d-mto');
   if (dMtoEl) dMtoEl.innerHTML = fmxPeso(disp);
-  st('d-ent', fmx(mtoTotal));
+  var dmU = directoMetasMes();
+  st('d-ent', fmx(r2(mtoTotal + dmU)));
   var dDesg = document.getElementById('d-desg');
-  if (dDesg) { var txtDesg = desgloseEntroActual(); dDesg.textContent = txtDesg ? 'Entró: ' + txtDesg : ''; dDesg.style.display = txtDesg ? 'block' : 'none'; }
+  if (dDesg) {
+    var txtDesg = desgloseEntroActual(), hayExt = gruposIngresoExtra().length > 0;
+    dDesg.textContent = txtDesg ? 'Entró: ' + txtDesg + (hayExt ? ' ›' : '') : '';
+    dDesg.style.display = txtDesg ? 'block' : 'none';
+    dDesg.style.cursor = hayExt ? 'pointer' : '';
+    dDesg.onclick = hayExt ? dlgIngresosExtra : null;
+  }
+  mostrarDirectoMetas('d-dmet', dmU);
   st('d-sal', fmx(gasto));
   st('d-hoy', fmx(Math.floor(Math.max(0, disp / rest))));
   renderHeroSobres();
@@ -3479,6 +3491,7 @@ function borrarSobrePropio(id, dest) {
   if (!s) return;
   if (dest) {
     E.regs.forEach(function(r) {
+      if (r.sobre === 'extra' && r.destino && r.destino.tipo === 'sobre' && r.destino.id === id && !mesEstaCerrado(periodoDe(r))) r.destino.id = dest;
       if (r.sobre !== id || mesEstaCerrado(periodoDe(r))) return;
       r.sobreOrig = id; r.subOrig = r.sub === undefined ? null : r.sub;
       r.sobre = dest; r.sub = null;
@@ -4156,7 +4169,11 @@ function renderReportes() {
     rPr.textContent = txtPr ? '\uD83E\uDDFE ' + txtPr : '';
     rPr.style.display = txtPr ? 'block' : 'none';
   }
-  st('r-ent', fmx(mto));
+  var dmR = esSem ? 0 : directoMetasMes();
+  st('r-ent', fmx(r2(mto + dmR)));
+  mostrarDirectoMetas('r-dmet', dmR);
+  if (rDesg && !esSem && gruposIngresoExtra().length) { rDesg.textContent += ' ›'; rDesg.style.cursor = 'pointer'; rDesg.onclick = dlgIngresosExtra; }
+  else if (rDesg) { rDesg.style.cursor = ''; rDesg.onclick = null; }
   st('r-sal', fmx(gasto));
   st('r-dif', fmx(dif));
   st('r-mg', mg + '%');
@@ -5063,7 +5080,9 @@ function prepararCierre() {
     ? '✅ Te sobró este mes'
     : '⚠️ Te pasaste este mes');
 
-  st('cierre-entro', fmx(mto));
+  var dmC = directoMetasMes();
+  st('cierre-entro', fmx(r2(mto + dmC)));
+  mostrarDirectoMetas('cierre-dmet', dmC);
   st('cierre-salio', fmx(gasto));
   var cDesg = document.getElementById('cierre-desg');
   if (cDesg) { var txtC = desgloseEntroActual(); cDesg.textContent = txtC ? 'Entró: ' + txtC : ''; cDesg.style.display = txtC ? 'block' : 'none'; }
@@ -5195,6 +5214,8 @@ function archivarMes(mesIdx, anio, mto) {
     }),
     racha: (E.gamif && E.gamif.racha) || 0
   };
+  var dmA = directoMetasDe(regsDeMes(mesIdx, anio));
+  if (dmA > 0) snapshot.directoMetas = dmA;
   var prov = provisionesMes(regsDeMes(mesIdx, anio), ym);
   if (txtProvisiones(prov)) snapshot.provisiones = prov;
   // Desglose de "Entró" (los callers archivan antes de limpiar arrastre y extra)
@@ -5534,10 +5555,15 @@ function construirReportePDF(item) {
   y -= 26;
 
   doc.texto(M, y, 'Entró', {size:11, color:'#6B4C3B'});
-  doc.texto(W-M, y, fmx(item.mto), {size:11, bold:true, align:'right', numeric:true});
-  if (item.ing !== undefined && desgloseEntro(item.ing, item.arr, item.ext)) {
+  doc.texto(W-M, y, fmx(entroMostrado(item)), {size:11, bold:true, align:'right', numeric:true});
+  if (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item))) {
     y -= 13;
-    doc.texto(M, y, desgloseEntro(item.ing, item.arr, item.ext), {size:9, color:'#7D5F4E'});
+    doc.texto(M, y, desgloseEntro(item.ing, item.arr, extItem(item)), {size:9, color:'#7D5F4E'});
+  }
+  if (Number(item.directoMetas) > 0) {
+    y -= 15;
+    doc.texto(M, y, 'Directo a metas', {size:11, color:'#6B4C3B'});
+    doc.texto(W-M, y, fmx(-item.directoMetas), {size:11, bold:true, align:'right', numeric:true});
   }
   y -= 18;
   doc.texto(M, y, 'Salió', {size:11, color:'#6B4C3B'});
@@ -5641,8 +5667,9 @@ function textoCierre(item) {
   return '💰 *¿A Dónde Se Fue?* — ' + tituloCaja + '\n' +
     (esCerrado ? '' : '📌 _Corte parcial — el mes sigue abierto_\n') +
     '\n' +
-    'Entró: ' + fmx(item.mto) + '\n' +
-    (item.ing !== undefined && desgloseEntro(item.ing, item.arr, item.ext) ? '   (' + desgloseEntro(item.ing, item.arr, item.ext) + ')\n' : '') +
+    'Entró: ' + fmx(entroMostrado(item)) + '\n' +
+    (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item)) ? '   (' + desgloseEntro(item.ing, item.arr, extItem(item)) + ')\n' : '') +
+    (Number(item.directoMetas) > 0 ? 'Directo a metas: ' + fmx(-item.directoMetas) + '\n' : '') +
     'Salió: ' + fmx(item.gasto) + '\n' +
     (pos
       ? '✅ *Te sobró: ' + fmx(item.dif) + '*'
@@ -5775,7 +5802,8 @@ function enviarCorreoCierre(item) {
     '━━━━━━━━━━━━━━━━━━━━\n' +
     'RESUMEN DEL MES\n' +
     '━━━━━━━━━━━━━━━━━━━━\n' +
-    'Entró:  ' + fmx(item.mto) + '\n' +
+    'Entró:  ' + fmx(entroMostrado(item)) + '\n' +
+    (Number(item.directoMetas) > 0 ? 'Directo a metas:  ' + fmx(-item.directoMetas) + '\n' : '') +
     'Salió:  ' + fmx(item.gasto) + '\n' +
     (pos
       ? 'Sobró:  ' + fmx(item.dif) + ' ✅'
@@ -5820,7 +5848,29 @@ function desgloseEntro(ing, arr, ext) {
   if (Number(ext)) partes.push('Extra ' + fmx(ext));
   return partes.length > 1 ? partes.join(' \u00B7 ') : '';
 }
-function desgloseEntroActual() { return desgloseEntro(E.perfil.mto || 0, E.saldoArrastrado || 0, E.ingresoExtraMes || 0); }
+function desgloseEntroActual() { return desgloseEntro(E.perfil.mto || 0, E.saldoArrastrado || 0, r2((Number(E.ingresoExtraMes) || 0) + directoMetasMes())); }
+// ── Directo a metas ──
+// La parte de un ingreso extra que va directo a una meta sí entró este mes:
+// se muestra en "Entró" y sale enseguida en "Directo a metas". El disponible
+// no cambia (calcDisponibleMes() no la incluye).
+function directoMetasDe(regs) {
+  return r2(regs.reduce(function(t, r) { return t + (r.sobre === 'extra' ? abonoMetaDe(r) : 0); }, 0));
+}
+function directoMetasMes() {
+  var p = periodoActual();
+  return directoMetasDe(E.regs.filter(function(r) { return periodoDe(r) === p; }));
+}
+// "Entró" de un cierre o corte: lo de base + lo que fue directo a metas.
+// Cierres viejos sin directoMetas se quedan como estaban.
+function entroMostrado(item) { return r2((Number(item.mto) || 0) + (Number(item.directoMetas) || 0)); }
+function extItem(item) { return r2((Number(item.ext) || 0) + (Number(item.directoMetas) || 0)); }
+function txtDirectoMetas(dm) { return dm > 0 ? '\uD83C\uDFAF Directo a metas ' + fmx(-dm) : ''; }
+function mostrarDirectoMetas(elId, dm) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = txtDirectoMetas(dm);
+  el.style.display = dm > 0 ? 'block' : 'none';
+}
 
 // ── AHORRO ──
 // Monto de un registro que fue a una meta. Registros viejos sin el campo se
@@ -5892,6 +5942,7 @@ function compartirWhatsApp() {
     ahorro: ahW.total, ahorroEnSobre: ahW.enSobre, ahorroMetas: ahW.aMetas,
     // No es un cierre — el mes sigue abierto y estos datos pueden cambiar.
     cerrado: false,
+    directoMetas: directoMetasMes(),
     mto: mto,
     gasto: gasto,
     dif: r2(mto - gasto),
@@ -5982,14 +6033,17 @@ function renderHistoria() {
         '<div style="height:10px"></div>' +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">💰 Entró</span>' +
-          '<span class="historia-dato-val pos">' + fmx(item.mto) + '</span>' +
+          '<span class="historia-dato-val pos">' + fmx(entroMostrado(item)) + '</span>' +
         '</div>' +
+        (Number(item.directoMetas) > 0
+          ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83C\uDFAF Directo a metas</span>' +
+            '<span class="historia-dato-val">' + fmx(-item.directoMetas) + '</span></div>' : '') +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">📤 Salió</span>' +
           '<span class="historia-dato-val g" style="color:#C4704F">' + fmx(item.gasto) + '</span>' +
         '</div>' +
-        (item.ing !== undefined && desgloseEntro(item.ing, item.arr, item.ext)
-          ? '<div style="font-size:11px;color:#7D5F4E;margin:-2px 0 4px">' + desgloseEntro(item.ing, item.arr, item.ext) + '</div>' : '') +
+        (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item))
+          ? '<div style="font-size:11px;color:#7D5F4E;margin:-2px 0 4px">' + desgloseEntro(item.ing, item.arr, extItem(item)) + '</div>' : '') +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">' + (pos?'✅ Sobró':'⚠️ Se pasó') + '</span>' +
           '<span class="historia-dato-val ' + (pos?'pos':'neg') + '">' + fmx(Math.abs(item.dif)) + '</span>' +
@@ -7629,9 +7683,8 @@ function dlgOrigenAbono(i, val){
         dlgElegirSobreAbono(i,val,nom);
       }},
       {l:'💸 Ingreso extra',c:'p',f:function(){
-        E.metas[i].actual=(E.metas[i].actual||0)+val;
-        E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,abonoMeta:val,nota:'Ingreso extra → Meta: '+nom,periodo: periodoActual(), fecha:new Date().toISOString()});
-        guardar();cerrarDlg();renderMetas();
+        registrarIngresoExtra(val, [{tipo:'meta', id:metaId(E.metas[i]), mto:val}]);
+        cerrarDlg();renderMetas();actualizarUI();
         if(E.metas[i].actual>=E.metas[i].meta){setTimeout(function(){toast('🎉 ¡Meta cumplida!');verificarInsignias();},300);}
         else{toast('✅ Abono guardado — registrado como ingreso extra');}
       }},
@@ -7678,23 +7731,57 @@ function dlgDestinoExtra(val){
     btns:[
       {l:'🛒 Gastarlo este mes',c:'p',f:function(){dlgIngresoSobre(val);}},
       {l:'🎯 Ahorrarlo en una meta',c:'p',f:function(){dlgIngresoMeta(val);}},
+      {l:'\uD83D\uDD00 Repartirlo',c:'p',f:function(){dlgRepartirExtra(val);}},
       {l:'Cancelar',c:'s',f:cerrarDlg}
     ]
   });
 }
-function dlgIngresoSobre(val){
+// ── Ingreso extra (E3) ──
+// Cada parte guarda su monto y su destino; las partes de un mismo ingreso
+// comparten "grupo". Parte a sobre: espacio extra del mes en ese sobre y
+// cuenta en el disponible. Parte a meta: sube la meta y sale en "Directo a metas".
+// {sobre:'extra', sub:'ingreso', mto:0, ingreso, total, grupo, destino:{tipo, id}, abonoMeta (meta)}
+function metaId(m) {
+  if (!m.id) m.id = 'mt_' + Date.now() + '_' + getMetas().indexOf(m);
+  return m.id;
+}
+function metaPorId(id) { return getMetas().filter(function(m) { return m.id === id; })[0] || null; }
+function normalizarMetas() {
+  var cambio = false;
+  getMetas().forEach(function(m) { if (!m.id) { metaId(m); cambio = true; } });
+  return cambio;
+}
+function registrarIngresoExtra(total, partes) {
+  var grupo = 'ix_' + Date.now(), per = periodoActual(), f = new Date().toISOString();
+  partes.forEach(function(pt) {
+    var r = {id:idRegNuevo(), sobre:'extra', sub:'ingreso', mto:0, ingreso:pt.mto, total:total, grupo:grupo,
+      destino:{tipo:pt.tipo, id:pt.id}, periodo:per, fecha:f};
+    if (pt.tipo === 'sobre') {
+      if (!E.limsExtraMes) E.limsExtraMes = {};
+      E.limsExtraMes[pt.id] = r2((E.limsExtraMes[pt.id] || 0) + pt.mto);
+      E.ingresoExtraMes = r2((Number(E.ingresoExtraMes) || 0) + pt.mto);
+      r.nota = 'Ingreso extra para ' + nombreSobreId(pt.id);
+    } else {
+      var m = metaPorId(pt.id);
+      m.actual = r2((m.actual || 0) + pt.mto);
+      r.abonoMeta = pt.mto;
+      r.nota = 'Ingreso extra → Meta: ' + m.nom;
+    }
+    E.regs.push(r);
+  });
+  guardar();
+}
+function dlgIngresoSobre(val, alElegir){
   if (!exigirEscritura()) return; // modo consulta
   var sobres = todosSobres().filter(function(s){ return !s.esMetas && !s.esAhorro && !s.esTanda && !s.esPr; });
   if(!sobres.length){cerrarDlg();toast('No hay sobres disponibles');return;}
   var btns = sobres.map(function(s){
     return {l:s.ico+' '+s.cor,c:'s',f:function(){
+      if (alElegir) { alElegir(s); return; }
       // Extra TEMPORAL de este mes — nunca se suma al límite base (E.lims)
       // configurado en el wizard, para no inflarlo de forma permanente.
-      if (!E.limsExtraMes) E.limsExtraMes = {};
-      E.limsExtraMes[s.id] = (E.limsExtraMes[s.id]||0) + val;
-      E.ingresoExtraMes = (E.ingresoExtraMes||0) + val;
-      E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,nota:'Ingreso extra para '+s.cor,periodo: periodoActual(), fecha:new Date().toISOString()});
-      guardar();cerrarDlg();actualizarUI();renderSobres();
+      registrarIngresoExtra(val, [{tipo:'sobre', id:s.id, mto:val}]);
+      cerrarDlg();actualizarUI();renderSobres();
       toast('✅ '+fmx(val)+' agregado a tu sobre de '+s.cor+' este mes');
     }};
   });
@@ -7704,7 +7791,7 @@ function dlgIngresoSobre(val){
     btns:btns
   });
 }
-function dlgIngresoMeta(val){
+function dlgIngresoMeta(val, alElegir){
   if (!exigirEscritura()) return; // modo consulta
   var metas = getMetas();
   if(!metas.length){
@@ -7720,9 +7807,9 @@ function dlgIngresoMeta(val){
   }
   var btns = metas.map(function(m,i){
     return {l:(m.ico||'🎯')+' '+m.nom,c:'s',f:function(){
-      m.actual=(m.actual||0)+val;
-      E.regs.push({id:Date.now(),sobre:'extra',sub:'ingreso',mto:0,abonoMeta:val,nota:'Ingreso extra → Meta: '+m.nom,periodo: periodoActual(), fecha:new Date().toISOString()});
-      guardar();cerrarDlg();renderMetas();
+      if (alElegir) { alElegir(m); return; }
+      registrarIngresoExtra(val, [{tipo:'meta', id:metaId(m), mto:val}]);
+      cerrarDlg();renderMetas();actualizarUI();
       if(m.actual>=m.meta){setTimeout(function(){toast('🎉 ¡Meta cumplida!');verificarInsignias();},300);}
       else{toast('✅ '+fmx(val)+' agregado a tu meta '+m.nom);}
     }};
@@ -7732,6 +7819,216 @@ function dlgIngresoMeta(val){
     s:fmx(val)+' listo para abonar',
     btns:btns
   });
+}
+// Una parte a un sobre (gastarla este mes) y el resto a una meta.
+function dlgRepartirExtra(val){
+  if (!exigirEscritura()) return; // modo consulta
+  if (!getMetas().length) { dlgIngresoMeta(val); return; }
+  dlg({e:'\uD83D\uDD00', t:'¿Cuánto va a un sobre?', s:'De ' + fmx(val) + ', lo que no vaya a un sobre va a una meta.',
+    inp:true, ph:'$ Para gastar este mes', md:'decimal',
+    btns:[
+      {l:'Siguiente →', c:'p', f:function(v){
+        var aSobre = r2(parseFloat(v));
+        if (!(aSobre > 0) || aSobre >= val) { toast('Escribe un monto entre $1 y ' + fmx(r2(val - 1))); return; }
+        var aMeta = r2(val - aSobre);
+        dlgIngresoSobre(aSobre, function(sb) {
+          dlgIngresoMeta(aMeta, function(m) {
+            registrarIngresoExtra(val, [{tipo:'sobre', id:sb.id, mto:aSobre}, {tipo:'meta', id:metaId(m), mto:aMeta}]);
+            cerrarDlg(); actualizarUI(); renderSobres(); renderMetas();
+            toast('\u2705 ' + fmx(aSobre) + ' a ' + sb.cor + ' y ' + fmx(aMeta) + ' a ' + m.nom);
+          });
+        });
+      }},
+      {l:'Cancelar', c:'s', f:cerrarDlg}
+    ]
+  });
+}
+
+// ── Ingresos extra del mes: ver, corregir y borrar ──
+// Grupos del periodo actual. Partes viejas sin monto guardado: "sinMonto".
+function gruposIngresoExtra() {
+  var p = periodoActual(), orden = [], g = {};
+  E.regs.forEach(function(r) {
+    if (r.sobre !== 'extra' || periodoDe(r) !== p) return;
+    var k = r.grupo || ('r' + r.id);
+    if (!g[k]) { g[k] = {clave:k, partes:[]}; orden.push(k); }
+    // Parte: el registro y su monto (sin escribir nada en el registro)
+    g[k].partes.push({r:r, mto:r.ingreso !== undefined ? Number(r.ingreso) || 0 : abonoMetaDe(r),
+      sinMonto:r.ingreso === undefined && !(abonoMetaDe(r) > 0)});
+  });
+  return orden.map(function(k) {
+    var x = g[k];
+    x.sinMonto = x.partes.some(function(pt) { return pt.sinMonto; });
+    x.total = x.partes[0].r.total !== undefined ? Number(x.partes[0].r.total) : r2(x.partes.reduce(function(t, pt) { return t + pt.mto; }, 0));
+    x.viejo = !x.partes[0].r.grupo;
+    return x;
+  });
+}
+function destinoParte(r) {
+  if (r.destino) return r.destino;
+  if (abonoMetaDe(r) > 0) {
+    var nom = String(r.nota || '').replace('Ingreso extra → Meta: ', '');
+    var m = getMetas().filter(function(x) { return x.nom === nom; })[0];
+    return {tipo:'meta', id:m ? metaId(m) : null, nom:nom};
+  }
+  return {tipo:'sobre', id:null};
+}
+function txtParte(pt) {
+  var r = pt.r, d = destinoParte(r);
+  if (d.tipo === 'meta') {
+    var m = d.id ? metaPorId(d.id) : null;
+    return '\uD83C\uDFAF ' + (m ? m.nom : (d.nom || 'meta borrada')) + ' ' + fmx(pt.mto);
+  }
+  return (d.id ? nombreSobreId(d.id) : String(r.nota || '').replace('Ingreso extra para ', '')) + ' ' + (pt.sinMonto ? '(monto no registrado)' : fmx(pt.mto));
+}
+function txtGrupoExtra(x) {
+  return '\uD83C\uDF81 ' + (x.sinMonto ? 'Ingreso extra' : fmx(x.total)) + ' · ' + x.partes.map(txtParte).join(' · ');
+}
+function dlgIngresosExtra() {
+  var gs = gruposIngresoExtra();
+  var nPer = ymNum(periodoActual());
+  var btns = gs.map(function(x) { return {l:txtGrupoExtra(x), c:'s', f:function(){ dlgAccionesExtra(x.clave); }}; });
+  btns.push({l:'Cerrar', c:'s', f:null});
+  dlg({e:'\uD83C\uDF81', t:'Ingresos extra de ' + MESES_NOM[nPer % 12].toLowerCase(),
+    s:gs.length ? 'Toca uno para corregirlo o borrarlo.' : 'Este mes no hay ingresos extra.', btns:btns});
+}
+function grupoExtra(clave) { return gruposIngresoExtra().filter(function(x) { return x.clave === clave; })[0] || null; }
+function dlgAccionesExtra(clave) {
+  var x = grupoExtra(clave);
+  if (!x) return;
+  if (x.sinMonto) {
+    dlg({e:'\uD83C\uDF81', t:'Monto no registrado', inf:txtGrupoExtra(x),
+      s:'Este ingreso se registró con una versión anterior que no guardaba el monto, así que no se puede corregir ni borrar. El total del mes sí está bien.',
+      btns:[{l:'Entendido', c:'p', f:null}]});
+    return;
+  }
+  dlg({e:'\uD83C\uDF81', t:'Ingreso extra', inf:txtGrupoExtra(x),
+    btns:[
+      {l:'\u270F\uFE0F Corregir', c:'s', f:function(){ conAvisoViejo(x, function(){ dlgCorregirExtra(clave); }); }},
+      {l:'\uD83D\uDDD1 Borrar', c:'d', f:function(){ conAvisoViejo(x, function(){ dlgBorrarExtra(clave); }); }},
+      {l:'Cancelar', c:'s', f:null}
+    ]});
+}
+// Movimientos viejos (identificados por la nota): mostrar qué se va a tocar y confirmar.
+function conAvisoViejo(x, seguir) {
+  if (!exigirEscritura()) return; // modo consulta
+  var per = periodoDe(x.partes[0]);
+  if (mesEstaCerrado(per)) { avisoMesCerrado(per); return; }
+  if (!x.viejo) { seguir(); return; }
+  var r = x.partes[0].r, d = destinoParte(r);
+  dlg({e:'\uD83D\uDD0E', t:'Registro de una versión anterior',
+    s:'Lo encontramos por su nota. Esto va a cambiar ' + fmx(x.partes[0].mto) + ' de la meta ' + (d.nom || '') +
+      ' (registro del ' + fechaCorta(r.fecha) + ').' + (d.id ? '' : ' Esa meta ya no existe: solo se ajusta el registro.'),
+    btns:[{l:'Continuar', c:'p', f:seguir}, {l:'Cancelar', c:'s', f:null}]});
+}
+// Cambia una parte a "nuevo" (0 = quitarla). Devuelve un aviso si la meta no se pudo ajustar.
+function ajustarParteExtra(pt, nuevo) {
+  var r = pt.r, d = destinoParte(r), delta = r2(nuevo - pt.mto), aviso = '';
+  if (d.tipo === 'sobre') {
+    if (!E.limsExtraMes) E.limsExtraMes = {};
+    E.limsExtraMes[d.id] = r2((E.limsExtraMes[d.id] || 0) + delta);
+    E.ingresoExtraMes = r2((Number(E.ingresoExtraMes) || 0) + delta);
+    r.ingreso = nuevo;
+  } else {
+    var m = d.id ? metaPorId(d.id) : null;
+    if (!m) aviso = 'La meta ' + (d.nom || '') + ' ya no existe; su parte no se pudo ajustar en la meta.';
+    else if ((Number(m.actual) || 0) + delta < 0) {
+      return 'La meta ' + m.nom + ' solo tiene ' + fmx(m.actual) + '; su parte no se cambió.';
+    } else m.actual = r2((Number(m.actual) || 0) + delta);
+    r.abonoMeta = nuevo;
+    if (r.ingreso !== undefined) r.ingreso = nuevo;
+  }
+  if (nuevo === 0) pt.quitar = true;
+  return aviso;
+}
+function terminarAjusteExtra(x, nuevoTotal, avisos) {
+  var quitar = [];
+  x.partes.forEach(function(pt) { if (pt.quitar) quitar.push(pt.r); else pt.r.total = nuevoTotal; });
+  E.regs = E.regs.filter(function(r) { return quitar.indexOf(r) === -1; });
+  guardar(); actualizarUI(); renderSobres(); renderMetas();
+  var sb = x.partes.map(function(pt) { return destinoParte(pt.r); }).filter(function(d) { return d.tipo === 'sobre' && d.id; })[0];
+  var sigue = function() { if (sb) ofrecerCubrirSobre(sb.id); };
+  if (avisos.length) dlg({e:'\u26A0\uFE0F', t:'Revisa tu meta', s:avisos.join(' '), btns:[{l:'Entendido', c:'p', f:sigue}]});
+  else sigue();
+}
+function dlgCorregirExtra(clave) {
+  var x = grupoExtra(clave);
+  dlg({e:'\u270F\uFE0F', t:'Corregir ingreso extra', s:'¿Cuánto fue en realidad?', inf:txtGrupoExtra(x),
+    inp:true, ph:'$ Monto correcto', md:'decimal', val:x.total,
+    btns:[
+      {l:'Siguiente →', c:'p', f:function(v){
+        var nuevo = r2(parseFloat(v));
+        if (!(nuevo > 0)) { toast('Ingresa un monto válido'); return; }
+        var ps = x.partes;
+        if (ps.length === 1) {
+          var av = ajustarParteExtra(ps[0], nuevo);
+          terminarAjusteExtra(x, nuevo, av ? [av] : []);
+          toast('Ingreso extra corregido a ' + fmx(nuevo) + ' ✓');
+          return;
+        }
+        var pS = ps.filter(function(pt) { return destinoParte(pt.r).tipo === 'sobre'; })[0];
+        var pM = ps.filter(function(pt) { return destinoParte(pt.r).tipo === 'meta'; })[0];
+        var sug = r2(nuevo * pS.mto / x.total);
+        dlg({e:'\uD83D\uDD00', t:'¿Cuánto va a ' + nombreSobreId(destinoParte(pS.r).id) + '?',
+          s:'De ' + fmx(nuevo) + ', el resto va a la meta.', inp:true, ph:'$ Para el sobre', md:'decimal', val:sug,
+          btns:[
+            {l:'Guardar', c:'p', f:function(v2){
+              var aS = r2(parseFloat(v2));
+              if (isNaN(aS) || aS < 0 || aS > nuevo) { toast('Escribe un monto entre $0 y ' + fmx(nuevo)); return; }
+              var avs = [];
+              var a1 = ajustarParteExtra(pS, aS); if (a1) avs.push(a1);
+              var a2 = ajustarParteExtra(pM, r2(nuevo - aS)); if (a2) avs.push(a2);
+              terminarAjusteExtra(x, nuevo, avs);
+              toast('Ingreso extra corregido a ' + fmx(nuevo) + ' ✓');
+            }},
+            {l:'Cancelar', c:'s', f:null}
+          ]});
+      }},
+      {l:'Cancelar', c:'s', f:null}
+    ]});
+}
+function dlgBorrarExtra(clave) {
+  var x = grupoExtra(clave);
+  var que = x.partes.map(function(pt) {
+    var d = destinoParte(pt.r);
+    return d.tipo === 'sobre' ? fmx(pt.mto) + ' del límite de ' + nombreSobreId(d.id) + ' este mes'
+      : fmx(pt.mto) + ' de la meta ' + (d.id && metaPorId(d.id) ? metaPorId(d.id).nom : (d.nom || ''));
+  });
+  dlg({e:'\uD83D\uDDD1', t:'¿Borrar este ingreso extra?', inf:txtGrupoExtra(x), s:'Se quitan ' + que.join(' y ') + '.',
+    btns:[
+      {l:'Sí, borrar', c:'d', f:function(){
+        var avs = [];
+        x.partes.forEach(function(pt) { var a = ajustarParteExtra(pt, 0); if (a) avs.push(a); });
+        terminarAjusteExtra(x, 0, avs);
+        toast('Ingreso extra borrado');
+      }},
+      {l:'Cancelar', c:'s', f:null}
+    ]});
+}
+// Si el sobre quedó con más gasto que límite: avisar y ofrecer tomar la
+// diferencia del límite de otro sobre (solo este mes). Los gastos no se tocan.
+function ofrecerCubrirSobre(id) {
+  var lim = limEfectivo(id), gas = calcGS(id);
+  if (!(lim > 0) && !(E.lims[id] > 0)) return;
+  var falta = r2(gas - lim);
+  if (!(falta > 0)) return;
+  var nomS = nombreSobreId(id);
+  var btns = sobresDeGasto().filter(function(x) {
+    return x.id !== id && E.lims[x.id] > 0 && r2(limEfectivo(x.id) - calcGS(x.id)) >= falta;
+  }).map(function(x) {
+    return {l:x.ico + ' ' + x.cor + ' · quedan ' + fmx(r2(limEfectivo(x.id) - calcGS(x.id))), c:'s', f:function(){
+      E.limsExtraMes[x.id] = r2((E.limsExtraMes[x.id] || 0) - falta);
+      E.limsExtraMes[id] = r2((E.limsExtraMes[id] || 0) + falta);
+      guardar(); actualizarUI(); renderSobres();
+      toast(fmx(falta) + ' de ' + x.cor + ' a ' + nomS + ' ✓');
+    }};
+  });
+  var hay = btns.length > 0;
+  btns.push({l:hay ? 'Dejarlo así' : 'Entendido', c:'s', f:null});
+  dlg({e:'\u26A0\uFE0F', t:nomS + ' se pasa de su límite',
+    s:nomS + ' ya gastó ' + fmx(gas) + ' y su límite queda en ' + fmx(lim) + '.' +
+      (hay ? ' ¿De dónde tomo los ' + fmx(falta) + '?' : ' Ningún otro sobre tiene ' + fmx(falta) + ' disponibles.'),
+    btns:btns});
 }
 
 function dlgEditarMeta(i){
