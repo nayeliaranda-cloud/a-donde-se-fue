@@ -2382,6 +2382,7 @@ function abrirModalEdicionTransaccion(id) {
   if (!r) return;
   if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
   if (movDeFondo(r)) return;
+  if (movDeTarjeta(r, 'editar')) return;
   dlg({
     e:'✏️', t:'Editar monto',
     inf: '📝 ' + (r.nota || 'Sin nota') + '\nMonto actual: ' + fmx(r.mto),
@@ -2422,6 +2423,7 @@ function dlgEliminarTransaccion(id) {
   if (!r) return;
   if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
   if (movDeFondo(r)) return;
+  if (movDeTarjeta(r, 'borrar')) return;
   dlg({
     e:'🗑', t:'Eliminar transacción',
     s:'¿Eliminar "' + (r.nota || 'esta transacción') + '" por ' + fmx(r.mto) + '? No se puede deshacer.',
@@ -2627,7 +2629,7 @@ function getAgendaItems() {
       fn:"cerrarMo('mo-agenda');abrirSobre('casa')"});
   });
   getTarjetas().forEach(function(t) {
-    if (t.diaPago) items.push({ico:t.ico||'💳',nom:t.nom,dias:calcDiasHasta(t.diaPago),mto:t.saldo,tipo:'Tarjeta',fn:"cerrarMo('mo-agenda');abrirSobre('deudas')"});
+    if (t.diaPago) items.push({ico:t.ico||'\uD83D\uDCB3',nom:t.nom,dias:calcDiasHasta(t.diaPago),mto:Math.max(0, t.saldo || 0),tipo:'Tarjeta',fn:"cerrarMo('mo-agenda');abrirSobre('deudas')"});
   });
   getMSI().forEach(function(m) {
     if (m.diaPago && (m.mesesPagados||0) < m.meses) items.push({ico:'\uD83D\uDCC5',nom:m.nom,dias:calcDiasHasta(m.diaPago),mto:pagoMSI(m),tipo:'MSI',fn:"cerrarMo('mo-agenda');abrirSobre('deudas')"});
@@ -6553,7 +6555,7 @@ function renderTarjetas(cont) {
 }
 
 function renderTarjetaCard(t, i) {
-  var uso = t.limite > 0 ? Math.round((t.saldo / t.limite) * 100) : 0;
+  var uso = t.limite > 0 ? Math.round((Math.max(0, t.saldo || 0) / t.limite) * 100) : 0;
   var clsUso = uso > 70 ? 'danger' : uso > 30 ? 'warn' : 'ok';
   var colorUso = uso > 70 ? '#D9534F' : uso > 30 ? '#C4704F' : '#4E7A52';
   var esTotalera = t.esTotalera || false;
@@ -6563,7 +6565,7 @@ function renderTarjetaCard(t, i) {
       '<div class="tc-banco-ico" style="background:' + (t.color||'#FAF6F0') + '20">' + (t.ico||'💳') + '</div>' +
       '<div class="tc-info">' +
         '<div class="tc-banco">' + escHtml(t.nom) + (esTotalera ? '<span class="totalera-badge">Totalera 💪</span>' : '') + '</div>' +
-        '<div class="tc-saldo">Saldo: ' + fmx(t.saldo) + ' · Límite: ' + fmx(t.limite) + '</div>' +
+        '<div class="tc-saldo">' + saldoTarjetaTxt(t) + ' · Límite: ' + fmx(t.limite) + '</div>' +
       '</div>' +
       '<div class="tc-semaforo">' +
         '<div class="tc-uso-pct" style="color:' + colorUso + '">' + uso + '%</div>' +
@@ -6581,7 +6583,7 @@ function renderTarjetaCard(t, i) {
 function buildTarjetaBody(t, i) {
   var html = '';
   var tasa = t.tasa || 36;
-  var saldo = t.saldo || 0;
+  var saldo = Math.max(0, t.saldo || 0);
   var min = t.pagoMin || Math.max(200, Math.round(saldo * 0.015));
 
   // ── Datos básicos ────────────────────────────────
@@ -6622,7 +6624,8 @@ function buildTarjetaBody(t, i) {
   }
 
   html += '<div class="tc-datos">' +
-    '<div class="tc-dato"><div class="tc-dato-lbl">Saldo actual</div><div class="tc-dato-val" style="color:#C4704F">' + fmx(saldo) + '</div></div>' +
+    (t.saldo < 0 ? '<div class="tc-dato"><div class="tc-dato-lbl">Saldo a favor</div><div class="tc-dato-val" style="color:#4E7A52">' + fmx(-t.saldo) + '</div></div>'
+      : '<div class="tc-dato"><div class="tc-dato-lbl">Saldo actual</div><div class="tc-dato-val" style="color:#C4704F">' + fmx(saldo) + '</div></div>') +
     '<div class="tc-dato"><div class="tc-dato-lbl">Límite</div><div class="tc-dato-val">' + fmx(t.limite||0) + '</div></div>' +
     '<div class="tc-dato"><div class="tc-dato-lbl">Tasa anual</div><div class="tc-dato-val">' + tasa + '%</div></div>' +
     '<div class="tc-dato"><div class="tc-dato-lbl">CAT aprox</div><div class="tc-dato-val" style="color:#C4704F">' + (t.cat||Math.round(tasa*1.3)) + '%</div></div>' +
@@ -6955,7 +6958,7 @@ function dlgEditarTarjeta(idx) {
   if (!t) return;
   dlg({
     e: t.ico, t: 'Editar ' + t.nom,
-    inf: 'Saldo inicial: ' + fmx(t.saldoInicial||t.saldo) + '\nSaldo actual: ' + fmx(t.saldo),
+    inf: 'Saldo inicial: ' + fmx(t.saldoInicial||t.saldo) + '\nSaldo actual: ' + saldoCorto(t.saldo || 0),
     btns: [
       {l: '💰 Actualizar saldo actual', c: 'p', f: function() {
         if (!exigirEscritura()) return; // modo consulta
@@ -7054,7 +7057,7 @@ function dlgRegistrarConsumo(idx) {
   var disponible = (t.limite||0) - (t.saldo||0);
   dlg({
     e: '🛍️', t: 'Registrar consumo en ' + t.nom,
-    inf: 'Saldo actual: ' + fmx(t.saldo) + (t.limite ? '\nDisponible: ' + fmx(disponible) : '') +
+    inf: (t.saldo < 0 ? 'Saldo a favor: ' + fmx(-t.saldo) : 'Saldo actual: ' + fmx(t.saldo)) + (t.limite ? '\nDisponible: ' + fmx(disponible) : '') +
       '\n\n💡 Esto es para cuando pasas tu tarjeta en una compra normal — NO descuenta de tu presupuesto del mes, pero SÍ sube tu deuda con el banco.',
     inp: true, ph: '$ ¿Cuánto gastaste?', md: 'decimal',
     btns: [
@@ -7066,11 +7069,13 @@ function dlgRegistrarConsumo(idx) {
           return;
         }
         // Solo sube la deuda — NO se registra en E.regs porque no salió dinero de tu bolsa hoy
-        getTarjetas()[idx].saldo = t.saldo + val;
+        var antesC = r2(Number(t.saldo) || 0), nuevoC = r2(antesC + val);
+        getTarjetas()[idx].saldo = nuevoC;
         guardar();
         abrirSobre('deudas');
         actualizarUI();
-        toast('Consumo de ' + fmx(val) + ' registrado — tu deuda subió a ' + fmx(t.saldo + val));
+        toast('Consumo de ' + fmx(val) + ' registrado — ' + (nuevoC < 0 ? 'se tomó de tu saldo a favor: te quedan ' + fmx(-nuevoC) + ' a favor'
+          : antesC < 0 ? 'usaste tu saldo a favor de ' + fmx(-antesC) + ' y tu deuda quedó en ' + fmx(nuevoC) : 'tu deuda subió a ' + fmx(nuevoC)));
       }},
       {l: 'Cancelar', c: 's', f: null}
     ]
@@ -7124,9 +7129,11 @@ function dlgAbonarTarjetaMonto(idx, seleccion) {
   seleccion = seleccion || {};
   var msiSeleccionados = getMSI().filter(function(m) { return seleccion[m.id]; });
   var totalMSI = r2(msiSeleccionados.reduce(function(s, m) { return s + pagoMSI(m); }, 0));
+  var deuda = Math.max(0, Number(t.saldo) || 0);
   dlg({
     e: '💸', t: 'Registrar pago a ' + t.nom,
-    inf: 'Saldo actual (cargos regulares): ' + fmx(t.saldo) + '\nPago sugerido: ' + fmx(t.pagoMin || Math.max(200, Math.round(t.saldo * 0.015))) +
+    inf: (t.saldo < 0 ? 'Saldo a favor: ' + fmx(-t.saldo) : 'Saldo actual (cargos regulares): ' + fmx(t.saldo)) +
+      '\nPago sugerido: ' + fmx(t.pagoMin || Math.max(200, Math.round(deuda * 0.015))) +
       (totalMSI > 0 ? '\nMensualidades MSI incluidas: ' + fmx(totalMSI) : ''),
     inp: true, ph: '$ ¿Cuánto pagaste EN TOTAL?', md: 'decimal',
     btns: [
@@ -7134,38 +7141,175 @@ function dlgAbonarTarjetaMonto(idx, seleccion) {
         var val = r2(parseFloat(v));
         if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); return; }
         if (val < totalMSI) { toast('El total debe ser al menos ' + fmx(totalMSI) + ' (tus mensualidades MSI marcadas)'); return; }
-        var montoRevolvente = val - totalMSI;
-        var regId = Date.now();
-        // Registrar la parte revolvente como gasto en sobre deudas
-        E.regs.push({id: regId, sobre: 'deudas', sub: 'tarjeta', mto: montoRevolvente,
-          nota: 'Pago ' + t.nom + (totalMSI > 0 ? ' (+ ' + fmx(totalMSI) + ' MSI)' : ''), periodo: periodoActual(), fecha: new Date().toISOString()});
-        if (!getTarjetas()[idx].pagos) getTarjetas()[idx].pagos = [];
-        getTarjetas()[idx].pagos.push({id: regId, regId: regId, mto: montoRevolvente, periodo: periodoActual(), fecha: new Date().toISOString()});
-        getTarjetas()[idx].saldo = Math.max(0, t.saldo - montoRevolvente);
-        if (getTarjetas()[idx].saldo === 0) getTarjetas()[idx].esTotalera = true;
-        var pagoMinRef = t.pagoMin || Math.max(200, Math.round(t.saldo * 0.015));
-        if (montoRevolvente > pagoMinRef) E.pagoMayorMinimo = true;
-
-        // Registrar cada mensualidad MSI marcada como pagada
-        msiSeleccionados.forEach(function(m) {
-          var msiIdx = -1;
-          getMSI().forEach(function(mm, i2) { if (mm.id === m.id) msiIdx = i2; });
-          if (msiIdx < 0) return;
-          E.regs.push({id: Date.now() + Math.floor(Math.random() * 1000), sobre: 'deudas', sub: 'abonos',
-            mto: pagoMSI(m), nota: 'MSI ' + m.nom + ' (' + ((m.mesesPagados || 0) + 1) + '/' + m.meses + ')',
-            periodo: periodoActual(), fecha: new Date().toISOString()});
-          getMSI()[msiIdx].mesesPagados = (getMSI()[msiIdx].mesesPagados || 0) + 1;
-        });
-
-        guardar();
-        abrirSobre('deudas');
-        actualizarUI();
-        verificarInsignias();
-        toast('Pago de ' + fmx(val) + ' registrado ✓' + (msiSeleccionados.length ? ' (' + msiSeleccionados.length + ' MSI incluidos)' : ''));
+        var rev = r2(val - totalMSI), nuevo = r2((Number(t.saldo) || 0) - rev);
+        var aplicar = function() { registrarPagoTarjeta(idx, rev, msiSeleccionados, val); };
+        if (rev > 0 && nuevo < 0) {
+          confirmarSaldoAFavor(t, 'Pagaste ' + fmx(rev) + (totalMSI > 0 ? ' a la tarjeta, además de ' + fmx(totalMSI) + ' de MSI' : ''), nuevo,
+            'Sí, registrar', aplicar, function() { dlgAbonarTarjetaMonto(idx, seleccion); });
+        } else aplicar();
       }},
       {l: 'Cancelar', c: 's', f: null}
     ]
   });
+}
+
+// ── Fase 6a: saldo a favor, pagos ligados y mensualidades MSI ──
+// Un saldo negativo es saldo a favor: el siguiente consumo lo usa primero, y
+// borrar o corregir un pago mueve el saldo exactamente lo que movió el pago.
+function saldoTarjetaTxt(t) {
+  var x = r2(Number(t.saldo) || 0);
+  return x < 0 ? 'Saldo a favor ' + fmx(-x) : 'Saldo: ' + fmx(x);
+}
+function saldoCorto(x) { x = r2(x); return x < 0 ? fmx(-x) + ' a favor' : fmx(x); }
+function confirmarSaldoAFavor(t, queTxt, nuevo, okTxt, aplicar, corregir) {
+  dlg({e:'\uD83D\uDCB3', t:'Te queda saldo a favor',
+    s:'Tu saldo registrado en ' + t.nom + ' es ' + saldoCorto(Number(t.saldo) || 0) + '. ' + queTxt + ': ' + t.nom + ' queda con saldo a favor de ' + fmx(-nuevo) + '.',
+    btns:[{l:okTxt, c:'p', f:aplicar}, {l:'Corregir el monto', c:'s', f:corregir}]});
+}
+function registrarPagoTarjeta(idx, rev, msis, val) {
+  var t = getTarjetas()[idx];
+  if (!t) return;
+  var ahora = new Date().toISOString(), per = periodoActual(), pagoId = idRegNuevo();
+  var totalMSI = r2(msis.reduce(function(s, m) { return s + pagoMSI(m); }, 0));
+  var pago = {id:pagoId, regId:null, mto:rev, msi:[], periodo:per, fecha:ahora, v:2};
+  if (rev > 0) {
+    pago.regId = idRegNuevo();
+    E.regs.push({id:pago.regId, sobre:'deudas', sub:'tarjeta', mto:rev, nota:'Pago ' + t.nom + (totalMSI > 0 ? ' (+ ' + fmx(totalMSI) + ' MSI)' : ''),
+      periodo:per, fecha:ahora, origen:{tipo:'tarjeta', id:t.id || null, pagoId:pagoId}});
+  }
+  msis.forEach(function(m0) {
+    var m = msiPorId(m0.id);
+    if (!m) return;
+    var n = (m.mesesPagados || 0) + 1, mto = pagoMSI(m), rid = idRegNuevo();
+    E.regs.push({id:rid, sobre:'deudas', sub:'abonos', mto:mto, nota:'MSI ' + m.nom + ' (' + n + '/' + m.meses + ')',
+      periodo:per, fecha:ahora, origen:{tipo:'msi', id:m.id, pagoId:pagoId}});
+    m.mesesPagados = n;
+    if (!m.pagos) m.pagos = [];
+    m.pagos.push({regId:rid, mto:mto, n:n, periodo:per, fecha:ahora, pagoTarjeta:pagoId});
+    pago.msi.push({id:m.id, regId:rid, mto:mto, n:n});
+  });
+  if (!t.pagos) t.pagos = [];
+  t.pagos.push(pago);
+  var antes = r2(Number(t.saldo) || 0);
+  t.saldo = r2(antes - rev);
+  if (t.saldo <= 0) t.esTotalera = true;
+  var pagoMinRef = t.pagoMin || Math.max(200, Math.round(Math.max(0, antes) * 0.015));
+  if (rev > pagoMinRef) E.pagoMayorMinimo = true;
+  guardar();
+  abrirSobre('deudas');
+  actualizarUI();
+  verificarInsignias();
+  toast('Pago de ' + fmx(val) + ' registrado ✓' + (msis.length ? ' (' + msis.length + ' MSI incluidos)' : '') + (t.saldo < 0 ? ' · saldo a favor ' + fmx(-t.saldo) : ''));
+}
+function msiPorId(id) { return getMSI().filter(function(m) { return m.id === id; })[0] || null; }
+// "MSI Celular (4/12)": nota de las mensualidades de versiones anteriores
+// (también con el nombre que tenía antes de cambiarlo).
+function msiDeNota(r) {
+  var x = /^MSI (.+) \((\d+)\/(\d+)\)$/.exec(r.nota || '');
+  if (!x) return null;
+  var m = getMSI().filter(function(mm) {
+    return mm.meses === Number(x[3]) && (mm.nom === x[1] || (mm.nomsAnt || []).indexOf(x[1]) !== -1);
+  })[0];
+  return m ? {m:m, n:Number(x[2])} : null;
+}
+// MSI incluidos en un pago de tarjeta. Los pagos nuevos los guardan; en los
+// viejos son los gastos "MSI …" creados en el mismo instante que el pago.
+function msiDePago(pago) {
+  if (pago.v === 2) return (pago.msi || []).map(function(x) { return {m:msiPorId(x.id), reg:regPorId(x.regId), regId:x.regId, mto:x.mto}; });
+  if (pago.regId === null || pago.regId === undefined) return [];
+  return E.regs.filter(function(r) {
+    return r.sobre === 'deudas' && r.sub === 'abonos' && /^MSI /.test(r.nota || '') && r.id >= pago.regId && r.id < pago.regId + 1000;
+  }).map(function(r) { var x = msiDeNota(r); return {m:x ? x.m : null, reg:r, regId:r.id, mto:Number(r.mto) || 0}; });
+}
+function ligaDeReg(r) {
+  var res = null;
+  getTarjetas().forEach(function(t, idx) {
+    (t.pagos || []).forEach(function(p) {
+      if (res) return;
+      if (p.regId === r.id) res = {tipo:'pago', idx:idx, t:t, pago:p};
+      else if (msiDePago(p).some(function(x) { return x.reg === r; })) res = {tipo:'msiDePago', idx:idx, t:t, pago:p};
+    });
+  });
+  if (res) return res;
+  var m = r.origen && r.origen.tipo === 'msi' ? msiPorId(r.origen.id) : null;
+  if (m) return {tipo:'msi', m:m, viejo:false};
+  var x = r.sobre === 'deudas' && !r.origen ? msiDeNota(r) : null;
+  return x ? {tipo:'msi', m:x.m, viejo:true} : null;
+}
+// Ver transacciones: un pago de tarjeta o una mensualidad se corrige desde su módulo.
+function movDeTarjeta(r, acc) {
+  var l = ligaDeReg(r);
+  if (!l) return false;
+  if (l.tipo === 'pago') {
+    if (acc === 'editar') dlgCorregirPago(l.idx, l.pago.id); else dlgBorrarPagoTarjeta(l.idx, l.pago.id);
+    return true;
+  }
+  if (l.tipo === 'msiDePago') {
+    dlg({e:'\uD83D\uDD17', t:'Es parte de un pago a ' + l.t.nom,
+      s:'Esta mensualidad se registró con el pago a ' + l.t.nom + ' del ' + fechaCorta(l.pago.fecha) + '. Corrígela o bórrala desde ese pago.',
+      btns:[{l:'Ir al pago', c:'p', f:function() { dlgCorregirPago(l.idx, l.pago.id); }}, {l:'Cancelar', c:'s', f:null}]});
+    return true;
+  }
+  var n = l.m.mesesPagados || 0;
+  if (acc === 'editar') {
+    dlg({e:'\uD83D\uDD12', t:'El monto de una mensualidad es fijo',
+      s:'Si no pagaste esta mensualidad de ' + l.m.nom + ', bórrala y regresa de ' + n + '/' + l.m.meses + ' a ' + Math.max(0, n - 1) + '/' + l.m.meses + '.',
+      btns:[{l:'Entendido', c:'p', f:null}]});
+    return true;
+  }
+  dlgBorrarMensualidad(l.m, r, l.viejo);
+  return true;
+}
+function dlgBorrarMensualidad(m, r, viejo) {
+  if (!exigirEscritura()) return; // modo consulta
+  if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
+  var n = m.mesesPagados || 0;
+  dlg({e:'\uD83D\uDDD1', t:'¿Borrar esta mensualidad?',
+    inf:'Se quita el gasto de ' + fmx(r.mto) + ' en Deudas.\n' + m.nom + ' regresa de ' + n + '/' + m.meses + ' a ' + Math.max(0, n - 1) + '/' + m.meses + '.' +
+      (viejo ? '\n\nEs de una versión anterior: la reconocí por la nota "' + r.nota + '".' : ''),
+    btns:[{l:'Sí, borrar', c:'d', f:function() {
+      E.regs = E.regs.filter(function(x) { return x !== r; });
+      m.mesesPagados = Math.max(0, n - 1);
+      m.pagos = (m.pagos || []).filter(function(p) { return p.regId !== r.id; });
+      guardar(); actualizarUI(); renderSobres(); abrirSobre('deudas');
+      toast('Mensualidad borrada: ' + m.nom + ' ' + m.mesesPagados + '/' + m.meses);
+    }}, {l:'Cancelar', c:'s', f:null}]});
+}
+function regDePago(pago) { return pago.regId !== null && pago.regId !== undefined ? regPorId(pago.regId) : null; }
+function periodoPago(pago) { var r = regDePago(pago); return r ? periodoDe(r) : (pago.periodo || ymDe(pago.fecha)); }
+function dlgBorrarPagoTarjeta(idx, pagoId) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTarjetas()[idx];
+  if (!t) return;
+  var pago = (t.pagos || []).filter(function(p) { return p.id === pagoId; })[0];
+  if (!pago) return;
+  var per = periodoPago(pago);
+  if (mesEstaCerrado(per)) { avisoMesCerrado(per); return; }
+  var reg = regDePago(pago), partes = msiDePago(pago);
+  var antes = r2(Number(t.saldo) || 0), despues = r2(antes + (Number(pago.mto) || 0));
+  var lineas = [];
+  if (pago.mto > 0) lineas.push('· Pago a ' + t.nom + ' de ' + fmx(pago.mto) + ' (Deudas)');
+  partes.forEach(function(x) {
+    var n = x.m ? (x.m.mesesPagados || 0) : 0;
+    lineas.push(x.m ? '· MSI ' + x.m.nom + ' de ' + fmx(x.mto) + ': ' + n + '/' + x.m.meses + ' → ' + Math.max(0, n - 1) + '/' + x.m.meses
+      : '· Mensualidad de ' + fmx(x.mto) + ' (Deudas)');
+  });
+  dlg({e:'\uD83D\uDDD1', t:'¿Eliminar este pago?',
+    inf:'Se quita:\n' + lineas.join('\n') + '\n\nSaldo de ' + t.nom + ': ' + saldoCorto(antes) + ' → ' + saldoCorto(despues) +
+      (pago.v !== 2 ? '\n\nEs un pago de una versión anterior. Si el saldo no queda bien, corrígelo en \u270F\uFE0F Editar de la tarjeta.' : ''),
+    btns:[{l:'Sí, eliminar', c:'d', f:function() {
+      var quitar = partes.map(function(x) { return x.reg; }).concat([reg]);
+      E.regs = E.regs.filter(function(r) { return quitar.indexOf(r) === -1; });
+      partes.forEach(function(x) {
+        if (!x.m) return;
+        x.m.mesesPagados = Math.max(0, (x.m.mesesPagados || 0) - 1);
+        x.m.pagos = (x.m.pagos || []).filter(function(mp) { return mp.regId !== x.regId; });
+      });
+      t.saldo = despues;
+      t.pagos = (t.pagos || []).filter(function(p) { return p !== pago; });
+      guardar(); abrirSobre('deudas'); actualizarUI();
+      toast('Pago eliminado · ' + saldoTarjetaTxt(t));
+    }}, {l:'Cancelar', c:'s', f:null}]});
 }
 
 function dlgHistorialPagos(idx) {
@@ -7176,7 +7320,9 @@ function dlgHistorialPagos(idx) {
   var btns = pagos.slice().reverse().map(function(p) {
     var f = new Date(p.fecha);
     var fechaTxt = f.toLocaleDateString('es-MX', {day:'numeric', month:'short'});
-    return {l: '📅 ' + fechaTxt + ' — ' + fmx(p.mto) + '  ✏️', c: 's', f: function() {
+    var msiT = r2(msiDePago(p).reduce(function(s, x) { return s + x.mto; }, 0));
+    var txt = p.mto > 0 ? fmx(p.mto) + (msiT > 0 ? ' + ' + fmx(msiT) + ' MSI' : '') : fmx(msiT) + ' (solo MSI)';
+    return {l: '\uD83D\uDCC5 ' + fechaTxt + ' — ' + txt + '  \u270F\uFE0F', c: 's', f: function() {
       dlgCorregirPago(idx, p.id);
     }};
   });
@@ -7195,48 +7341,43 @@ function dlgCorregirPago(idx, pagoId) {
   var pago = null;
   (t.pagos||[]).forEach(function(p){ if (p.id === pagoId) pago = p; });
   if (!pago) return;
-  var regPago = null;
-  E.regs.forEach(function(r){ if (r.id === pago.regId) regPago = r; });
-  var perPago = regPago ? periodoDe(regPago) : (pago.periodo || ymDe(pago.fecha));
+  var perPago = periodoPago(pago);
   if (mesEstaCerrado(perPago)) { avisoMesCerrado(perPago); return; }
+  var totMSI = r2(msiDePago(pago).reduce(function(s, x) { return s + x.mto; }, 0));
   dlg({
     e: '✏️', t: 'Corregir pago',
-    inf: 'Monto registrado: ' + fmx(pago.mto) + '\nEsto ajustará el saldo de tu tarjeta automáticamente.',
-    inp: true, ph: 'Nuevo monto', md: 'decimal',
+    inf: 'Pago a la tarjeta: ' + fmx(pago.mto) + (totMSI > 0 ? '\nMSI incluidos: ' + fmx(totMSI) + ' (no cambian)' : '') +
+      '\n' + saldoTarjetaTxt(t) + '\nEsto ajustará el saldo de tu tarjeta automáticamente.',
+    inp: true, ph: 'Nuevo monto a la tarjeta', md: 'decimal', val: pago.mto,
     btns: [
       {l: 'Guardar cambio', c: 'p', f: function(v) {
         var val = r2(parseFloat(v));
-        if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); return; }
-        var diff = val - pago.mto; // si el nuevo monto es mayor, el saldo baja más
-        var tActual = getTarjetas()[idx];
-        tActual.saldo = Math.max(0, (tActual.saldo||0) - diff);
-        pago.mto = val;
-        var reg = null;
-        E.regs.forEach(function(r){ if (r.id === pago.regId) reg = r; });
-        if (reg) reg.mto = val;
-        guardar(); abrirSobre('deudas'); actualizarUI();
-        toast('Pago corregido a ' + fmx(val) + ' ✓');
+        if (isNaN(val) || val < 0 || (val === 0 && !(totMSI > 0))) { toast('Ingresa un monto válido'); return; }
+        var nuevo = r2((Number(t.saldo) || 0) - (val - pago.mto));
+        var aplicar = function() { corregirPagoTarjeta(t, pago, val, nuevo); };
+        if (nuevo < 0 && val > pago.mto) {
+          confirmarSaldoAFavor(t, 'Con este cambio pagas ' + fmx(r2(val - pago.mto)) + ' más', nuevo, 'Sí, guardar', aplicar, function() { dlgCorregirPago(idx, pagoId); });
+        } else aplicar();
       }},
-      {l: '🗑 Eliminar este pago', c: 'd', f: function() {
-        dlg({
-          e: '🗑', t: 'Eliminar pago',
-          s: '¿Eliminar este pago de ' + fmx(pago.mto) + '? No se puede deshacer.',
-          btns: [
-            {l: 'Sí, eliminar', c: 'd', f: function() {
-              var tActual = getTarjetas()[idx];
-              tActual.saldo = (tActual.saldo||0) + pago.mto; // revertir: la deuda vuelve a subir
-              tActual.pagos = (tActual.pagos||[]).filter(function(p){ return p.id !== pagoId; });
-              E.regs = E.regs.filter(function(r){ return r.id !== pago.regId; });
-              guardar(); abrirSobre('deudas'); actualizarUI();
-              toast('Pago eliminado, saldo restaurado ✓');
-            }},
-            {l: 'Cancelar', c: 's', f: null}
-          ]
-        });
-      }},
+      {l: '\uD83D\uDDD1 Eliminar este pago', c: 'd', f: function() { dlgBorrarPagoTarjeta(idx, pagoId); }},
       {l: 'Cancelar', c: 's', f: null}
     ]
   });
+}
+function corregirPagoTarjeta(t, pago, val, nuevo) {
+  var ant = pago.mto, reg = regDePago(pago);
+  t.saldo = nuevo;
+  if (nuevo <= 0) t.esTotalera = true;
+  pago.mto = val;
+  if (reg && val > 0) reg.mto = val;
+  else if (reg) { E.regs = E.regs.filter(function(r) { return r !== reg; }); pago.regId = null; }
+  else if (val > 0) {
+    pago.regId = idRegNuevo();
+    E.regs.push({id:pago.regId, sobre:'deudas', sub:'tarjeta', mto:val, nota:'Pago ' + t.nom, periodo:pago.periodo || periodoActual(), fecha:pago.fecha,
+      origen:{tipo:'tarjeta', id:t.id || null, pagoId:pago.id}});
+  }
+  guardar(); abrirSobre('deudas'); actualizarUI();
+  toast('Pago corregido: ' + fmx(ant) + ' → ' + fmx(val) + ' · ' + saldoTarjetaTxt(t));
 }
 
 function dlgEliminarTarjeta(idx) {
@@ -7273,7 +7414,7 @@ function renderBanTarjetas() {
 
   // Alertas urgentes: pago vence en 3 días o menos
   var urgentes = ts.filter(function(t) {
-    return t.diaPago && calcDiasHasta(t.diaPago) <= 3 && !t.esTotalera;
+    return t.diaPago && calcDiasHasta(t.diaPago) <= 3 && !t.esTotalera && (t.saldo || 0) > 0;
   });
 
   if (!urgentes.length) { cont.innerHTML = ''; return; }
@@ -7440,6 +7581,7 @@ function buildMSIBody(m, i) {
     '<button class="msi-btn sec" onclick="dlgEditarMSI(' + i + ')">✏️ Editar</button>' +
     '<button class="msi-btn del" onclick="dlgEliminarMSI(' + i + ')">🗑</button>' +
   '</div>';
+  if (pagados > 0) html += '<button class="btn-add" style="margin-top:8px" onclick="dlgMensualidadesMSI(' + i + ')">\uD83D\uDCCB Mensualidades pagadas</button>';
 
   return html;
 }
@@ -7627,13 +7769,12 @@ function dlgPagarMSI(idx) {
     btns: [
       {l: '✓ Confirmar pago ' + fmx(pagoMSI(m)), c: 'p', f: function() {
         // Registrar como gasto
-        E.regs.push({
-          id: Date.now(), sobre: 'deudas', sub: 'abonos',
-          mto: pagoMSI(m),
-          nota: 'MSI ' + m.nom + ' (' + ((m.mesesPagados||0)+1) + '/' + m.meses + ')',
-          periodo: periodoActual(), fecha: new Date().toISOString()
-        });
-        getMSI()[idx].mesesPagados = (m.mesesPagados || 0) + 1;
+        var rid = idRegNuevo(), n = (m.mesesPagados || 0) + 1, mto = pagoMSI(m), ahora = new Date().toISOString();
+        E.regs.push({id: rid, sobre: 'deudas', sub: 'abonos', mto: mto, nota: 'MSI ' + m.nom + ' (' + n + '/' + m.meses + ')',
+          periodo: periodoActual(), fecha: ahora, origen: {tipo: 'msi', id: m.id, pagoId: null}});
+        getMSI()[idx].mesesPagados = n;
+        if (!m.pagos) m.pagos = [];
+        m.pagos.push({regId: rid, mto: mto, n: n, periodo: periodoActual(), fecha: ahora, pagoTarjeta: null});
         var restantesNuevo = m.meses - getMSI()[idx].mesesPagados;
         guardar();
         actualizarUI();
@@ -7658,6 +7799,8 @@ function dlgEditarMSI(idx) {
     e: m.ico, t: 'Editar ' + m.nom,
     inf: 'Pagos: ' + (m.mesesPagados||0) + '/' + m.meses + '\nDía de pago: ' + m.diaPago,
     btns: [
+      {l: '\u270F\uFE0F Cambiar nombre', c: 's', f: function() { dlgNombreMSI(idx); }},
+      {l: 'Precio y plazo', c: 's', f: function() { dlgPrecioPlazoMSI(idx); }},
       {l: 'Corregir meses pagados', c: 'p', f: function() {
         dlg({
           e: m.ico, t: '¿Cuántos meses has pagado?',
@@ -7710,6 +7853,85 @@ function dlgEditarMSI(idx) {
       {l: 'Cancelar', c: 's', f: null}
     ]
   });
+}
+
+function dlgNombreMSI(idx) {
+  var m = getMSI()[idx];
+  if (!m) return;
+  dlg({e: m.ico, t: 'Nombre', inp: true, ph: 'Nombre', md: 'text', val: m.nom, btns: [
+    {l: 'Guardar', c: 'p', f: function(v) {
+      var nom = (v || '').trim();
+      if (!nom) { toast('Escribe un nombre'); return; }
+      if (nom !== m.nom) {
+        // El nombre anterior sirve para reconocer sus mensualidades viejas por la nota
+        m.nomsAnt = (m.nomsAnt || []).concat([m.nom]);
+        m.nom = nom;
+      }
+      guardar(); abrirSobre('deudas');
+      toast('Nombre actualizado ✓');
+    }},
+    {l: 'Cancelar', c: 's', f: null}
+  ]});
+}
+function dlgPrecioPlazoMSI(idx) {
+  var m = getMSI()[idx];
+  if (!m) return;
+  var pag = m.mesesPagados || 0;
+  if (pag > 0) {
+    dlg({e: '\uD83D\uDD12', t: 'Ya tiene pagos',
+      s: 'No puedes cambiar el precio ni el plazo de ' + m.nom + ', porque ya tiene ' + pag + ' de ' + m.meses + ' mensualidades pagadas. Si lo registraste mal, bórralo y regístralo de nuevo.',
+      btns: [{l: 'Entendido', c: 'p', f: null}]});
+    return;
+  }
+  dlg({e: m.ico, t: 'Precio total', inp: true, ph: 'Precio total', md: 'decimal', val: m.precioTotal, btns: [
+    {l: 'Siguiente →', c: 'p', f: function(v) {
+      var precio = r2(parseFloat(v));
+      if (isNaN(precio) || precio <= 0) { toast('Ingresa un monto válido'); return; }
+      dlg({e: m.ico, t: '¿A cuántos meses?', inp: true, ph: 'Número de meses', md: 'decimal', val: m.meses, btns: [
+        {l: 'Guardar', c: 'p', f: function(v2) {
+          var meses = parseInt(v2);
+          if (isNaN(meses) || meses < 1) { toast('Número de meses inválido'); return; }
+          m.precioTotal = precio; m.meses = meses; m.pagoMensual = r2(precio / meses);
+          guardar(); abrirSobre('deudas');
+          toast(m.nom + ': ' + fmx(m.pagoMensual) + '/mes por ' + meses + ' meses ✓');
+        }},
+        {l: 'Cancelar', c: 's', f: null}
+      ]});
+    }},
+    {l: 'Cancelar', c: 's', f: null}
+  ]});
+}
+// Mensualidades con detalle: las nuevas (m.pagos) y las viejas que siguen en
+// los movimientos (reconocidas por la nota). Las de antes no tienen detalle.
+function mensualidadesMSI(m) {
+  var out = (m.pagos || []).map(function(p) { return {n:p.n, mto:p.mto, fecha:p.fecha, periodo:p.periodo, reg:regPorId(p.regId)}; });
+  var ya = out.map(function(x) { return x.reg; });
+  E.regs.forEach(function(r) {
+    if (ya.indexOf(r) !== -1 || r.origen) return;
+    var x = msiDeNota(r);
+    if (x && x.m === m) out.push({n:x.n, mto:Number(r.mto) || 0, fecha:r.fecha, periodo:periodoDe(r), reg:r});
+  });
+  out.sort(function(a, b) { return (b.n || 0) - (a.n || 0); });
+  return out;
+}
+function dlgMensualidadesMSI(i) {
+  var m = getMSI()[i];
+  if (!m) return;
+  var lista = mensualidadesMSI(m), pag = m.mesesPagados || 0, sinDet = Math.max(0, pag - lista.length);
+  var btns = lista.map(function(x) {
+    var cerr = mesEstaCerrado(x.periodo);
+    return {l: (cerr ? '\uD83D\uDD12 ' : '') + x.n + '/' + m.meses + ' · ' + fechaCorta(x.fecha) + ' · ' + fmx(x.mto), c: 's', f: function() {
+      if (cerr) { avisoMesCerrado(x.periodo); return; }
+      if (!x.reg) { toast('Esa mensualidad ya no está en tus movimientos'); return; }
+      movDeTarjeta(x.reg, 'borrar');
+    }};
+  });
+  btns.push({l: 'Cerrar', c: 's', f: null});
+  dlg({e: '\uD83D\uDCCB', t: 'Mensualidades de ' + m.nom,
+    s: pag + ' de ' + m.meses + ' pagadas.' +
+      (sinDet ? ' ' + sinDet + (sinDet === 1 ? ' es de antes (al registrar el MSI o de una versión anterior) y no tiene detalle.' : ' son de antes (al registrar el MSI o de una versión anterior) y no tienen detalle.') : '') +
+      (lista.length ? ' Toca una para borrarla.' : ''),
+    btns: btns});
 }
 
 // ── ELIMINAR MSI ──────────────────────────────────
