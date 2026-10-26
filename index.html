@@ -1956,9 +1956,9 @@ function actualizarUI() {
 
   var dMtoEl = document.getElementById('d-mto');
   if (dMtoEl) dMtoEl.innerHTML = fmxPeso(disp);
-  var dmU = directoMetasMes(), retU = retirosMes();
-  st('d-ent', fmx(r2(mtoTotal - retU + dmU)));
-  mostrarLineaRetiro('d-ret', retU);
+  var dmU = directoMetasMes(), retU = retirosMes(), cobU = cobrosMes();
+  st('d-ent', fmx(r2(mtoTotal - retU - cobU.ef + dmU)));
+  mostrarLineaRetiro('d-ret', retU, cobU);
   var dDesg = document.getElementById('d-desg');
   if (dDesg) {
     var txtDesg = desgloseEntroActual(), hayExt = gruposIngresoExtra().length > 0;
@@ -2036,7 +2036,7 @@ function actualizarUI() {
     if (sa <= -1) { ico = '\u26A0\uFE0F'; tit = 'Tus sobres suman ' + fmx(-sa) + ' más de lo que entró este mes'; sub = 'Ajusta tus límites'; ver = true; }
     else if (pendientesMes().length) {
       var pds = pendientesMes(), totP = r2(pds.reduce(function(t, x) { return t + x.mto; }, 0));
-      ico = '\uD83D\uDCB0'; tit = 'Tienes ' + fmx(totP) + ' sin asignar (' + (pds[0].tipo === 'retiro' ? 'retiro de ahorro' : 'ingreso extra') + ')';
+      ico = '\uD83D\uDCB0'; tit = 'Tienes ' + fmx(totP) + ' sin asignar (' + (pds[0].tipo === 'retiro' ? 'retiro de ahorro' : pds[0].tipo === 'cobro' ? 'cobro de tanda' : 'ingreso extra') + ')';
       sub = '¿A qué sobre va este mes?'; ver = true; modo = 'pendiente';
     }
     else if (retiroArrastradoEfectivo() > 0) {
@@ -2382,7 +2382,7 @@ function abrirModalEdicionTransaccion(id) {
   if (!r) return;
   if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
   if (movDeFondo(r)) return;
-  if (movDeTarjeta(r, 'editar')) return;
+  if (movDeTarjeta(r, 'editar') || movDeMeta(r, 'editar') || movDeServicio(r, 'editar')) return;
   dlg({
     e:'✏️', t:'Editar monto',
     inf: '📝 ' + (r.nota || 'Sin nota') + '\nMonto actual: ' + fmx(r.mto),
@@ -2423,7 +2423,7 @@ function dlgEliminarTransaccion(id) {
   if (!r) return;
   if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
   if (movDeFondo(r)) return;
-  if (movDeTarjeta(r, 'borrar')) return;
+  if (movDeTarjeta(r, 'borrar') || movDeMeta(r, 'borrar') || movDeServicio(r, 'borrar')) return;
   dlg({
     e:'🗑', t:'Eliminar transacción',
     s:'¿Eliminar "' + (r.nota || 'esta transacción') + '" por ' + fmx(r.mto) + '? No se puede deshacer.',
@@ -3706,7 +3706,7 @@ function renderAhorroSobre(cont) {
   if (movs.length) {
     html += '<div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#7D5F4E;margin-bottom:8px">Movimientos de este mes</div>';
     html += movs.map(function(mv) {
-      var onclick = mv.meta !== undefined ? 'dlgDetalleMeta(' + mv.meta + ')' : 'dlgMovAhorro(' + mv.id + ')';
+      var onclick = mv.meta !== undefined ? 'dlgDetalleMeta(' + mv.meta + ')' : mv.tanda ? 'abrirSobre(\'tanda\')' : 'dlgMovAhorro(' + mv.id + ')';
       return filaMov(onclick, mv.txt, mv.fecha ? fechaCorta(mv.fecha) : '', mv.mto, false);
     }).join('');
   } else {
@@ -3774,6 +3774,7 @@ function movsAhorroMes() {
       else if (r.sub === 'usado') out.push({id:r.id, fecha:r.fecha, txt:'\u2714\uFE0F Ya lo usé', mto:-(Number(r.usado) || 0)});
       else if (r.sub === 'regreso') out.push({id:r.id, fecha:r.fecha, txt:'\u21A9 Regreso de un retiro', mto:Number(r.regreso) || 0});
     }
+    else if (r.sobre === 'extra' && r.sub === 'cobro' && r.aAhorro > 0) out.push({tanda:true, fecha:r.fecha, txt:'\uD83E\uDD1D De tu cobro de tanda', mto:Number(r.aAhorro) || 0});
   });
   getMetas().forEach(function(m, i) {
     (m.movs || []).forEach(function(mv) {
@@ -4161,6 +4162,7 @@ function renderTandas(cont) {
       '<button class="btn-sm" onclick="dlgPagoTanda('+i+')">💸 Registrar pago</button>'+
       '<button class="btn-sm p" onclick="dlgDetTanda('+i+')">Ver historial</button>'+
       '</div>'+
+      (pgs?'<button class="btn-sm s" style="width:100%;margin-top:7px" onclick="dlgDeshacerPagoTanda('+i+')">\u21A9 Deshacer último pago</button>':'')+
       '<button class="btn-sm s" style="width:100%;margin-top:7px" onclick="dlgEditarTanda('+i+')">✏️ Editar</button>'+
       '<button class="btn-sm d" style="width:100%;margin-top:7px" onclick="dlgDelTanda('+i+')">Eliminar tanda</button>'+
       '</div>';
@@ -4232,38 +4234,215 @@ function dlgTandaMonto(tn,tper,tm,tp){
   });
 }
 
+var PER_TANDA = {semanal:'semana', quincenal:'quincena', mensual:'mes'};
+function perTanda(t) { return PER_TANDA[t.periodo || 'semanal'] || 'semana'; }
 function dlgPagoTanda(idx) {
   if (!exigirEscritura()) return; // modo consulta
   var t=getTandas()[idx];if(!t)return;
   var pgs=t.pgs?t.pgs.length:0;
-  if(pgs>=t.part){toast('¡Esta tanda ya terminó! 🎉');return;}
-  dlg({e:'💸',t:'Registrar pago semana #'+(pgs+1),
-    inf:'Tanda: '+t.nom+'\nMonto: '+fmx(t.mto)+'\nPagos hechos: '+pgs+'/'+t.part+(t.turno===pgs+1?'\n\n🎉 ¡Esta semana te toca COBRAR!':''),
+  if(pgs>=t.part){toast('¡Esta tanda ya terminó! \uD83C\uDF89');return;}
+  var lab=perTanda(t), esCobro=(t.turno===pgs+1);
+  dlg({e:'\uD83D\uDCB8',t:'Registrar pago '+lab+' #'+(pgs+1),
+    inf:'Tanda: '+t.nom+'\nMonto: '+fmx(t.mto)+'\nPagos hechos: '+pgs+'/'+t.part+
+      (esCobro?'\n\n\uD83C\uDF89 ¡'+(lab==='mes'?'Este ':'Esta ')+lab+' te toca COBRAR '+fmx(r2(t.mto*t.part))+'! Tu aportación de '+fmx(t.mto)+' se registra en Tandita.':''),
     btns:[
-      {l:'✓ Confirmar pago',c:'p',f:function(){
-        // Si esta semana le toca COBRAR, no se descuenta de su presupuesto — recibe el dinero, no lo gasta
-        var esCobro = (t.turno===pgs+1);
-        if(!t.pgs)t.pgs=[];
-        t.pgs.push({sem:pgs+1,fecha:new Date().toISOString(),mto:t.mto});
-        if(!esCobro){
-          E.regs.push({id:Date.now(),sobre:'tanda',sub:null,mto:t.mto,nota:'Tanda: '+t.nom+' — semana '+(pgs+1),periodo: periodoActual(), fecha:new Date().toISOString()});
-        }
-        guardar();abrirSobre('tanda');actualizarUI();
-        if(esCobro)toast('¡Esta semana cobras '+fmx(t.mto*t.part)+'! 🎉 (no se descuenta de tu presupuesto)');
-        else toast('Pago semana #'+(pgs+1)+' registrado — '+fmx(t.mto)+' ✓');
-      }},
+      {l:'✓ Confirmar pago',c:'p',f:function(){ registrarPagoTanda(idx); }},
       {l:'Cancelar',c:'s',f:null}
     ]
   });
+}
+// Cada pago (también el de tu turno) es un gasto en Tandita ligado a la tanda.
+// En tu turno, el cobro va en su propia línea "Cobro de tanda", fuera de "Entró":
+// {sobre:'extra', sub:'cobro', mto:0, cobro, asignado:{sobre:mto}, aMeta:{metaId:mto}, aAhorro, tandaId, n}
+function registrarPagoTanda(idx) {
+  var t = getTandas()[idx];
+  if (!t) return;
+  if (!t.id) t.id = 't_' + Date.now();
+  if (!t.pgs) t.pgs = [];
+  var n = t.pgs.length + 1, lab = perTanda(t), esCobro = t.turno === n;
+  var per = periodoActual(), ahora = new Date().toISOString(), rid = idRegNuevo();
+  E.regs.push({id:rid, sobre:'tanda', sub:null, mto:t.mto, nota:'Tanda: ' + t.nom + ' — ' + lab + ' ' + n, periodo:per, fecha:ahora, origen:{tipo:'tanda', id:t.id, n:n}});
+  var pg = {sem:n, fecha:ahora, mto:t.mto, periodo:per, regId:rid};
+  t.pgs.push(pg);
+  if (!esCobro) {
+    guardar(); abrirSobre('tanda'); actualizarUI();
+    toast('Pago ' + lab + ' #' + n + ' registrado — ' + fmx(t.mto) + ' ✓');
+    return;
+  }
+  var c = {id:idRegNuevo(), sobre:'extra', sub:'cobro', mto:0, cobro:r2(t.mto * t.part), asignado:{}, aMeta:{}, aAhorro:0, tandaId:t.id, n:n,
+    nota:'Cobro de tanda: ' + t.nom, periodo:per, fecha:ahora};
+  E.regs.push(c);
+  pg.cobroId = c.id;
+  guardar(); abrirSobre('tanda'); actualizarUI();
+  dlgDestinoCobro(c);
+}
+function sumaObj(o) { var t = 0; for (var k in (o || {})) t += Number(o[k]) || 0; return r2(t); }
+function cobroGuardado(r) { return r2(sumaObj(r.aMeta) + (Number(r.aAhorro) || 0)); }
+function cobroEfectivo(r) { return r2((Number(r.cobro) || 0) - cobroGuardado(r)); }
+function cobroPendiente(r) { return Math.max(0, r2(cobroEfectivo(r) - sumaObj(r.asignado))); }
+// tot: lo cobrado · guardado: a metas y ahorro · ef: lo que sube el disponible
+function cobrosDe(regs) {
+  var o = {tot:0, guardado:0, ef:0};
+  regs.forEach(function(r) {
+    if (r.sobre !== 'extra' || r.sub !== 'cobro') return;
+    o.tot += Number(r.cobro) || 0; o.guardado += cobroGuardado(r); o.ef += cobroEfectivo(r);
+  });
+  o.tot = r2(o.tot); o.guardado = r2(o.guardado); o.ef = r2(o.ef);
+  return o;
+}
+function cobrosMes() { var p = periodoActual(); return cobrosDe(E.regs.filter(function(r) { return periodoDe(r) === p; })); }
+function cobroAMeta(c, m, x) {
+  var id = metaId(m);
+  c.aMeta[id] = r2((c.aMeta[id] || 0) + x);
+  m.actual = r2((Number(m.actual) || 0) + x);
+  movMeta(m, 'tanda', x, {regId:c.id});
+}
+function dlgDestinoCobro(c) {
+  var pd = {r:c, tipo:'cobro', mto:cobroPendiente(c)};
+  var fin = function() { cerrarDlg(); actualizarUI(); renderSobres(); };
+  var repartir = function(tit) { pd.mto = cobroPendiente(c); if (pd.mto > 0) dlgRepartirSobres(pd, tit, fin); else fin(); };
+  var btns = [{l:'\uD83D\uDED2 Gastarlo este mes', c:'p', f:function(){ repartir('¿A qué sobre va este mes?'); }}];
+  if (getMetas().length) btns.push({l:'\uD83C\uDFAF A una meta', c:'s', f:function(){ dlgCobroAMeta(c, function(){ repartir('¿A qué sobre va lo demás?'); }); }});
+  btns.push({l:'Después', c:'s', f:fin});
+  dlg({e:'\uD83C\uDF89', t:'¡Cobraste ' + fmx(c.cobro) + '!',
+    s:'¿Qué hago con él? No cuenta como ingreso: va en su propia línea "Cobro de tanda". Lo que no repartas queda sin asignar.', btns:btns});
+}
+function dlgCobroAMeta(c, despues) {
+  var monto = function(m) {
+    var max = cobroPendiente(c);
+    dlg({e:'\uD83C\uDFAF', t:'¿Cuánto va a ' + m.nom + '?', s:'Del cobro quedan ' + fmx(max) + ' por repartir.', inp:true, ph:'$ Monto', md:'decimal', val:max,
+      btns:[
+        {l:'Siguiente →', c:'p', f:function(v){
+          var x = r2(parseFloat(v));
+          if (!(x > 0) || x > max) { toast('Escribe un monto entre $0.01 y ' + fmx(max)); return; }
+          cobroAMeta(c, m, x);
+          guardar(); actualizarUI(); renderMetas();
+          despues();
+        }},
+        {l:'Cancelar', c:'s', f:null}
+      ]});
+  };
+  var btns = getMetas().map(function(m) { return {l:(m.ico || '\uD83C\uDFAF') + ' ' + m.nom, c:'s', f:function(){ monto(m); }}; });
+  btns.push({l:'Cancelar', c:'s', f:null});
+  dlg({e:'\uD83C\uDFAF', t:'¿A qué meta?', btns:btns});
+}
+// Cierre: lo del cobro que no se repartió va a una meta, al sobre de Ahorro o
+// pasa al mes siguiente (tocar fuera = pasa al mes siguiente).
+function cobrosPendientesDe(ym) {
+  return E.regs.filter(function(r) { return r.sobre === 'extra' && r.sub === 'cobro' && periodoDe(r) === ym && cobroPendiente(r) > 0; });
+}
+function preguntarCobroPendiente(ym, seguir) {
+  var cs = cobrosPendientesDe(ym), tot = r2(cs.reduce(function(t, r) { return t + cobroPendiente(r); }, 0));
+  if (!(tot > 0) || !puedeEscribir()) { seguir(); return; }
+  var listo = false, ir = function() { if (listo) return; listo = true; seguir(); };
+  var aplicar = function(fn, msg) { cs.forEach(function(r) { fn(r, cobroPendiente(r)); }); guardar(); toast(msg); ir(); };
+  var btns = [{l:'\uD83D\uDCB0 A mi sobre de Ahorro', c:'p', f:function(){
+    aplicar(function(r, x) { r.aAhorro = r2((Number(r.aAhorro) || 0) + x); }, fmx(tot) + ' de tu cobro pasaron a tu sobre de Ahorro');
+  }}];
+  if (getMetas().length) btns.push({l:'\uD83C\uDFAF A una meta', c:'s', f:function(){
+    var bm = getMetas().map(function(m) { return {l:(m.ico || '\uD83C\uDFAF') + ' ' + m.nom, c:'s', f:function(){
+      aplicar(function(r, x) { cobroAMeta(r, m, x); }, fmx(tot) + ' de tu cobro pasaron a ' + m.nom);
+    }}; });
+    bm.push({l:'Que pase al mes siguiente', c:'s', f:ir});
+    dlg({e:'\uD83C\uDFAF', t:'¿A qué meta?', btns:bm, alCerrar:ir});
+  }});
+  btns.push({l:'Que pase al mes siguiente', c:'s', f:ir});
+  dlg({e:'\uD83E\uDD1D', t:'¿Qué hago con lo que no repartiste?',
+    s:'Te quedaron ' + fmx(tot) + ' de tu cobro de tanda sin repartir. Si no, pasan al mes siguiente.', btns:btns, alCerrar:ir});
+}
+// Gasto de un pago de tanda: los nuevos lo guardan; los viejos se reconocen por la nota.
+function pagoTandaReg(t, p) {
+  if (p.regId !== undefined && p.regId !== null) return regPorId(p.regId);
+  return E.regs.filter(function(r) { return r.sobre === 'tanda' && !r.origen && r.nota === 'Tanda: ' + t.nom + ' — semana ' + p.sem; })[0] || null;
+}
+function periodoPagoTanda(t, p) { var r = pagoTandaReg(t, p); return p.periodo || (r ? periodoDe(r) : ymDe(p.fecha)); }
+function dlgDeshacerPagoTanda(idx) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTandas()[idx];
+  if (!t || !(t.pgs || []).length) return;
+  var n = t.pgs.length, p = t.pgs[n - 1], reg = pagoTandaReg(t, p), per = periodoPagoTanda(t, p);
+  if (mesEstaCerrado(per)) { avisoMesCerrado(per); return; }
+  var c = p.cobroId ? regPorId(p.cobroId) : null, esCobro = p.sem === t.turno;
+  if (c) {
+    for (var k in (c.aMeta || {})) {
+      var m = metaPorId(k), x = c.aMeta[k];
+      if (m && (Number(m.actual) || 0) < x) { avisoNoAlcanzaMeta(m, 'No puedes deshacer este cobro de ' + fmx(c.cobro), r2(x - (Number(m.actual) || 0)), ''); return; }
+    }
+    var enAh = saldoSobreAhorro();
+    if (c.aAhorro > 0 && enAh < c.aAhorro) {
+      dlg({e:'\u26A0\uFE0F', t:'No alcanza', s:'No puedes deshacer este cobro de ' + fmx(c.cobro) + ', porque mandaste ' + fmx(c.aAhorro) + ' a tu sobre de Ahorro y solo le quedan ' + fmx(enAh) +
+        '. Primero regresa ' + fmx(r2(c.aAhorro - enAh)) + ' a tu sobre de Ahorro.', btns:[{l:'Entendido', c:'p', f:null}]});
+      return;
+    }
+  }
+  var tand = calcGS('tanda'), lin = [];
+  if (esCobro) lin.push('Se quita el cobro #' + n + ' del ' + fechaCorta(p.fecha) + (c || reg ? '.' : ' (no tenía gasto ni cobro registrado).'));
+  else lin.push('Se quita el pago #' + n + ' de ' + fmx(p.mto) + ' del ' + fechaCorta(p.fecha) + '.');
+  if (reg) lin.push((esCobro ? 'Tu aportación de ' + fmx(reg.mto) + ' · ' : '') + 'Tandita: ' + fmx(tand) + ' → ' + fmx(r2(tand - (periodoDe(reg) === periodoActual() ? Number(reg.mto) || 0 : 0))));
+  if (c) {
+    var partes = [];
+    for (var s1 in (c.asignado || {})) if (c.asignado[s1] > 0) partes.push(nombreSobreId(s1) + ' ' + fmx(-c.asignado[s1]));
+    for (var m1 in (c.aMeta || {})) { var mm = metaPorId(m1); if (c.aMeta[m1] > 0) partes.push((mm ? mm.nom : 'Meta') + ' ' + fmx(-c.aMeta[m1])); }
+    if (c.aAhorro > 0) partes.push('Sobre de Ahorro ' + fmx(-c.aAhorro));
+    lin.push('Cobro de tanda: ' + fmx(c.cobro) + (partes.length ? ' (' + partes.join(' · ') + ')' : ''));
+  }
+  lin.push('Pagos: ' + n + '/' + t.part + ' → ' + (n - 1) + '/' + t.part);
+  if (reg && p.regId === undefined) lin.push('\nEs de una versión anterior: lo reconocí por la nota "' + reg.nota + '".');
+  dlg({e:'\u21A9\uFE0F', t:'¿Deshacer el último pago?', inf:lin.join('\n'),
+    btns:[{l:'Sí, deshacer', c:'d', f:function() {
+      E.regs = E.regs.filter(function(r) { return r !== reg && r !== c; });
+      if (c) {
+        if (!E.limsExtraMes) E.limsExtraMes = {};
+        for (var s2 in (c.asignado || {})) E.limsExtraMes[s2] = r2((E.limsExtraMes[s2] || 0) - c.asignado[s2]);
+        for (var m2 in (c.aMeta || {})) {
+          var mt = metaPorId(m2);
+          if (!mt) continue;
+          mt.actual = r2((Number(mt.actual) || 0) - c.aMeta[m2]);
+          (mt.movs || []).forEach(function(mv) { if (mv.tipo === 'tanda' && mv.regId === c.id) mv.deshecho = new Date().toISOString(); });
+        }
+      }
+      t.pgs.pop();
+      guardar(); abrirSobre('tanda'); actualizarUI(); renderMetas();
+      toast((esCobro ? 'Cobro' : 'Pago') + ' #' + n + ' deshecho · Pagos ' + (n - 1) + '/' + t.part);
+    }}, {l:'Cancelar', c:'s', f:null}]});
+}
+function dlgCorregirPagoTanda(idx, sem) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTandas()[idx];
+  if (!t) return;
+  var p = (t.pgs || []).filter(function(x) { return x.sem === sem; })[0];
+  if (!p) return;
+  var per = periodoPagoTanda(t, p);
+  if (mesEstaCerrado(per)) { avisoMesCerrado(per); return; }
+  var reg = pagoTandaReg(t, p);
+  if (!reg) { toast('Ese pago no tiene gasto registrado'); return; }
+  dlg({e:'\u270F\uFE0F', t:'Corregir pago #' + p.sem, inf:'Tanda: ' + t.nom + '\nMonto registrado: ' + fmx(p.mto), inp:true, ph:'Nuevo monto', md:'decimal', val:p.mto,
+    btns:[{l:'Guardar', c:'p', f:function(v) {
+      var x = r2(parseFloat(v));
+      if (!(x > 0)) { toast('Ingresa un monto válido'); return; }
+      var ant = p.mto;
+      reg.mto = x; p.mto = x;
+      guardar(); abrirSobre('tanda'); actualizarUI();
+      toast('Pago #' + p.sem + ' corregido: ' + fmx(ant) + ' → ' + fmx(x) + ' · Tandita ' + fmx(calcGS('tanda')));
+    }}, {l:'Cancelar', c:'s', f:null}]});
 }
 
 function dlgDetTanda(idx) {
   var t=getTandas()[idx];if(!t)return;
   var pgs=t.pgs||[];var tot=pgs.reduce(function(s,p){return s+p.mto;},0);
-  var hist=pgs.length?pgs.map(function(p){return 'Semana '+p.sem+(p.sem===t.turno?' ← TU COBRO 🎉':'')+': '+fmx(p.mto);}).join('\n'):'Sin pagos registrados aún';
-  dlg({e:'🤝',t:t.nom,
-    inf:'💰 Monto/semana: '+fmx(t.mto)+'\n👥 Participantes: '+t.part+'\n🔢 Tu turno: #'+t.turno+'\n💵 Cobras: '+fmx(t.mto*t.part)+'\n📤 Total pagado: '+fmx(tot)+'\n\n📋 Historial:\n'+hist,
-    btns:[{l:'Cerrar',c:'s',f:null}]
+  var lab=perTanda(t), Lab=lab.charAt(0).toUpperCase()+lab.slice(1);
+  var btns=pgs.slice().reverse().map(function(p){
+    var per=periodoPagoTanda(t,p), cerr=mesEstaCerrado(per);
+    return {l:(cerr?'\uD83D\uDD12 ':'')+Lab+' '+p.sem+' · '+fechaCorta(p.fecha)+' · '+fmx(p.mto)+(p.sem===t.turno?' · tu cobro \uD83C\uDF89':''),c:'s',f:function(){
+      if(cerr){avisoMesCerrado(per);return;}
+      dlgCorregirPagoTanda(idx,p.sem);
+    }};
+  });
+  btns.push({l:'Cerrar',c:'s',f:null});
+  dlg({e:'\uD83E\uDD1D',t:t.nom,
+    inf:'Monto por '+lab+': '+fmx(t.mto)+'\nParticipantes: '+t.part+'\nTu turno: #'+t.turno+'\nCobras: '+fmx(t.mto*t.part)+'\nTotal pagado: '+fmx(tot),
+    s:pgs.length?'Toca un pago para corregir el monto.':'Sin pagos registrados aún',
+    btns:btns
   });
 }
 
@@ -4396,9 +4575,9 @@ function renderReportes() {
     rPr.textContent = txtPr ? '\uD83E\uDDFE ' + txtPr : '';
     rPr.style.display = txtPr ? 'block' : 'none';
   }
-  var dmR = esSem ? 0 : directoMetasMes(), retR = esSem ? 0 : retirosMes();
-  st('r-ent', fmx(r2(mto - retR + dmR)));
-  mostrarLineaRetiro('r-ret', retR);
+  var dmR = esSem ? 0 : directoMetasMes(), retR = esSem ? 0 : retirosMes(), cobR = esSem ? null : cobrosMes();
+  st('r-ent', fmx(r2(mto - retR - (cobR ? cobR.ef : 0) + dmR)));
+  mostrarLineaRetiro('r-ret', retR, cobR);
   mostrarDirectoMetas('r-dmet', dmR);
   if (rDesg && !esSem && gruposIngresoExtra().length) { rDesg.textContent += ' ›'; rDesg.style.cursor = 'pointer'; rDesg.onclick = dlgIngresosExtra; }
   else if (rDesg) { rDesg.style.cursor = ''; rDesg.onclick = null; }
@@ -5319,9 +5498,9 @@ function prepararCierre() {
     ? '✅ Te sobró este mes'
     : '⚠️ Te pasaste este mes');
 
-  var dmC = directoMetasMes(), retC = retirosMes();
-  st('cierre-entro', fmx(r2(mto - retC + dmC)));
-  mostrarLineaRetiro('cierre-ret', retC);
+  var dmC = directoMetasMes(), retC = retirosMes(), cobC = cobrosMes();
+  st('cierre-entro', fmx(r2(mto - retC - cobC.ef + dmC)));
+  mostrarLineaRetiro('cierre-ret', retC, cobC);
   mostrarDirectoMetas('cierre-dmet', dmC);
   st('cierre-salio', fmx(gasto));
   var cDesg = document.getElementById('cierre-desg');
@@ -5458,12 +5637,14 @@ function archivarMes(mesIdx, anio, mto) {
   if (dmA > 0) snapshot.directoMetas = dmA;
   var retA = retirosDe(regsDeMes(mesIdx, anio));
   if (retA > 0) snapshot.retiros = retA;
+  var cobA = cobrosDe(regsDeMes(mesIdx, anio));
+  if (cobA.tot > 0) { snapshot.cobros = cobA.tot; if (cobA.guardado > 0) snapshot.cobrosGuardado = cobA.guardado; }
   if (ah.usado > 0) { snapshot.usado = ah.usado; snapshot.neto = ah.neto; }
   var prov = provisionesMes(regsDeMes(mesIdx, anio), ym);
   if (txtProvisiones(prov)) snapshot.provisiones = prov;
   // Desglose de "Entró" (los callers archivan antes de limpiar arrastre y extra)
   var dIng = Number(E.perfil.mto) || 0, dArr = Number(E.saldoArrastrado) || 0, dExt = Number(E.ingresoExtraMes) || 0;
-  if (r2(dIng + dArr + dExt) === r2(mto - retA)) { snapshot.ing = dIng; snapshot.arr = dArr; snapshot.ext = dExt; }
+  if (r2(dIng + dArr + dExt) === r2(mto - retA - cobA.ef)) { snapshot.ing = dIng; snapshot.arr = dArr; snapshot.ext = dExt; }
   ahorroAcumInit(); // antes de agregar este mes a Mi Historia
   E.ahorroAcum = r2(E.ahorroAcum + ah.enSobre);
   if (!E.historial) E.historial = [];
@@ -5507,7 +5688,9 @@ function confirmarCierre(regresoDecidido) {
   // Retiro de ahorro sin asignar: preguntar antes de archivar (tocar fuera = No)
   var ymC = periodoActual();
   if (regresoDecidido !== true && regresoDecidido !== false) {
-    preguntarRegresoRetiro(ymC, function(si) { if (si) regresarRetirosMes(ymC); confirmarCierre(si); });
+    preguntarCobroPendiente(ymC, function() {
+      preguntarRegresoRetiro(ymC, function(si) { if (si) regresarRetirosMes(ymC); confirmarCierre(si); });
+    });
     return;
   }
   var raC = datosRetiroPendiente(ymC);
@@ -5824,6 +6007,16 @@ function construirReportePDF(item) {
     doc.texto(M, y, 'Retiro de ahorro', {size:11, color:'#6B4C3B'});
     doc.texto(W-M, y, '+' + fmx(item.retiros), {size:11, bold:true, align:'right', numeric:true});
   }
+  if (Number(item.cobros) > 0) {
+    y -= 15;
+    doc.texto(M, y, 'Cobro de tanda', {size:11, color:'#6B4C3B'});
+    doc.texto(W-M, y, '+' + fmx(item.cobros), {size:11, bold:true, align:'right', numeric:true});
+  }
+  if (Number(item.cobrosGuardado) > 0) {
+    y -= 15;
+    doc.texto(M, y, 'Del cobro a metas y ahorro', {size:11, color:'#6B4C3B'});
+    doc.texto(W-M, y, fmx(-item.cobrosGuardado), {size:11, bold:true, align:'right', numeric:true});
+  }
   y -= 18;
   doc.texto(M, y, 'Salió', {size:11, color:'#6B4C3B'});
   doc.texto(W-M, y, fmx(item.gasto), {size:11, bold:true, align:'right', numeric:true});
@@ -5930,6 +6123,8 @@ function textoCierre(item) {
     (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item)) ? '   (' + desgloseEntro(item.ing, item.arr, extItem(item)) + ')\n' : '') +
     (Number(item.directoMetas) > 0 ? 'Directo a metas: ' + fmx(-item.directoMetas) + '\n' : '') +
     (Number(item.retiros) > 0 ? 'Retiro de ahorro: +' + fmx(item.retiros) + '\n' : '') +
+    (Number(item.cobros) > 0 ? 'Cobro de tanda: +' + fmx(item.cobros) + '\n' : '') +
+    (Number(item.cobrosGuardado) > 0 ? 'Del cobro a metas y ahorro: ' + fmx(-item.cobrosGuardado) + '\n' : '') +
     'Salió: ' + fmx(item.gasto) + '\n' +
     (pos
       ? '✅ *Te sobró: ' + fmx(item.dif) + '*'
@@ -6065,6 +6260,8 @@ function enviarCorreoCierre(item) {
     'Entró:  ' + fmx(entroMostrado(item)) + '\n' +
     (Number(item.directoMetas) > 0 ? 'Directo a metas:  ' + fmx(-item.directoMetas) + '\n' : '') +
     (Number(item.retiros) > 0 ? 'Retiro de ahorro:  +' + fmx(item.retiros) + '\n' : '') +
+    (Number(item.cobros) > 0 ? 'Cobro de tanda:  +' + fmx(item.cobros) + '\n' : '') +
+    (Number(item.cobrosGuardado) > 0 ? 'Del cobro a metas y ahorro:  ' + fmx(-item.cobrosGuardado) + '\n' : '') +
     'Salió:  ' + fmx(item.gasto) + '\n' +
     (pos
       ? 'Sobró:  ' + fmx(item.dif) + ' ✅'
@@ -6099,7 +6296,7 @@ function calcDisponibleMes() {
   var mtoBase = Number(E.perfil.mto) || 0;
   var arrastre = Number(E.saldoArrastrado) || 0;
   var extraMes = Number(E.ingresoExtraMes) || 0;
-  return r2(mtoBase + arrastre + extraMes + retirosMes());
+  return r2(mtoBase + arrastre + extraMes + retirosMes() + cobrosMes().ef);
 }
 // Desglose de "Entró": "Ingreso $10,000 · Arrastre +$1,500 · Extra $2,000".
 // Vacío si solo hay ingreso (no aporta nada).
@@ -6128,14 +6325,23 @@ function directoMetasMes() {
 }
 // "Entró" de un cierre o corte: lo de base + lo que fue directo a metas.
 // Cierres viejos sin directoMetas se quedan como estaban.
-function entroMostrado(item) { return r2((Number(item.mto) || 0) - (Number(item.retiros) || 0) + (Number(item.directoMetas) || 0)); }
+function entroMostrado(item) {
+  return r2((Number(item.mto) || 0) - (Number(item.retiros) || 0) - r2((Number(item.cobros) || 0) - (Number(item.cobrosGuardado) || 0)) + (Number(item.directoMetas) || 0));
+}
 // Retiro de ahorro "para gastarlo": sube el disponible pero no es ingreso.
 function txtRetiro(x) { return x > 0 ? '\u21A9 Retiro de ahorro +' + fmx(x) : ''; }
-function mostrarLineaRetiro(elId, x) {
+// Cobro de tanda: sube el disponible (lo que no se guardó) pero no es ingreso.
+function txtCobro(tot, guardado) {
+  if (!(tot > 0)) return '';
+  return '\uD83E\uDD1D Cobro de tanda +' + fmx(tot) + (guardado > 0 ? '\n\uD83C\uDFAF Del cobro a metas y ahorro ' + fmx(-guardado) : '');
+}
+function mostrarLineaRetiro(elId, x, cob) {
   var el = document.getElementById(elId);
   if (!el) return;
-  el.textContent = txtRetiro(x);
-  el.style.display = x > 0 ? 'block' : 'none';
+  var t = [txtRetiro(x), cob ? txtCobro(cob.tot, cob.guardado) : ''].filter(function(z) { return z; }).join('\n');
+  el.textContent = t;
+  el.style.whiteSpace = 'pre-line';
+  el.style.display = t ? 'block' : 'none';
 }
 function extItem(item) { return r2((Number(item.ext) || 0) + (Number(item.directoMetas) || 0)); }
 function txtDirectoMetas(dm) { return dm > 0 ? '\uD83C\uDFAF Directo a metas ' + fmx(-dm) : ''; }
@@ -6162,6 +6368,7 @@ function calcAhorro(regs) {
   regs.forEach(function(r) {
     if (r.sobre === 'extra' && r.sub === 'retiro') { usado += retiroEfectivo(r); return; }
     if (r.sobre === 'extra' && r.sub === 'usado') { usado += Number(r.usado) || 0; return; }
+    if (r.sobre === 'extra' && r.sub === 'cobro') { aMetas += sumaObj(r.aMeta); enSobre += Number(r.aAhorro) || 0; return; }
     if (r.sobre === 'extra' && r.sub === 'regreso') {
       if (r.origen === 'ahorro') enSobre += Number(r.regreso) || 0; else aMetas += Number(r.regreso) || 0;
       return;
@@ -6227,6 +6434,7 @@ function compartirWhatsApp() {
     cerrado: false,
     directoMetas: directoMetasMes(),
     retiros: retirosMes(),
+    cobros: cobrosMes().tot, cobrosGuardado: cobrosMes().guardado,
     mto: mto,
     gasto: gasto,
     dif: r2(mto - gasto),
@@ -6325,6 +6533,12 @@ function renderHistoria() {
         (Number(item.retiros) > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\u21A9 Retiro de ahorro</span>' +
             '<span class="historia-dato-val">+' + fmx(item.retiros) + '</span></div>' : '') +
+        (Number(item.cobros) > 0
+          ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83E\uDD1D Cobro de tanda</span>' +
+            '<span class="historia-dato-val">+' + fmx(item.cobros) + '</span></div>' : '') +
+        (Number(item.cobrosGuardado) > 0
+          ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83C\uDFAF Del cobro a metas y ahorro</span>' +
+            '<span class="historia-dato-val">' + fmx(-item.cobrosGuardado) + '</span></div>' : '') +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">📤 Salió</span>' +
           '<span class="historia-dato-val g" style="color:#C4704F">' + fmx(item.gasto) + '</span>' +
@@ -6443,23 +6657,26 @@ function chkNuevoMes() {
   if (nCerrar < mesActualNum) {
     // Retiro de ahorro sin asignar en el mes que se cierra: preguntar antes de archivar
     var ymCerrar = ymDeNum(nCerrar);
-    if (!window._regresoDecidido && retirosPendientesDe(ymCerrar).length && puedeEscribir()) {
+    if (!window._regresoDecidido && (retirosPendientesDe(ymCerrar).length || cobrosPendientesDe(ymCerrar).length) && puedeEscribir()) {
       if (window._preguntandoRegreso) return;
       window._preguntandoRegreso = true;
-      preguntarRegresoRetiro(ymCerrar, function(si) {
-        window._preguntandoRegreso = false;
-        if (si) regresarRetirosMes(ymCerrar);
-        guardar();
-        window._regresoDecidido = true;
-        chkNuevoMes();
-        window._regresoDecidido = false;
+      preguntarCobroPendiente(ymCerrar, function() {
+        preguntarRegresoRetiro(ymCerrar, function(si) {
+          window._preguntandoRegreso = false;
+          if (si) regresarRetirosMes(ymCerrar);
+          guardar();
+          window._regresoDecidido = true;
+          chkNuevoMes();
+          window._regresoDecidido = false;
+        });
       });
       return;
     }
     var raA = datosRetiroPendiente(ymCerrar);
     // No se cerró a mano: se cierra solo, con la misma regla de arrastre que
     // el cierre manual (sobrante o déficit pasan al mes siguiente).
-    var mtoCerrado = r2((E.perfil.mto || 0) + (E.saldoArrastrado || 0) + (E.ingresoExtraMes || 0) + retirosDe(regsDeMes(nCerrar % 12, Math.floor(nCerrar / 12))));
+    var regsC = regsDeMes(nCerrar % 12, Math.floor(nCerrar / 12));
+    var mtoCerrado = r2((E.perfil.mto || 0) + (E.saldoArrastrado || 0) + (E.ingresoExtraMes || 0) + retirosDe(regsC) + cobrosDe(regsC).ef);
     var nomCerrado = MESES_NOM[nCerrar % 12];
     var snap = archivarMes(nCerrar % 12, Math.floor(nCerrar / 12), mtoCerrado);
     E.saldoArrastrado = snap.dif;
@@ -8278,7 +8495,7 @@ function dlgDestinoExtra(val){
 // Salen:  retiro (para gastarlo) | usado (ya lo usé) | aAhorro (al sobre de Ahorro)
 var TIPO_MOV_META = {sobre:'Abono desde un sobre', extra:'Ingreso extra', traspaso:'Traspaso desde Ahorro',
   previo:'Ahorros previos', sobrante:'Sobrante del cierre', regreso:'Regreso de un retiro', inicial:'Saldo anterior (sin detalle)',
-  retiro:'Retiro para gastar', usado:'Ya lo usé', aAhorro:'Retiro a tu sobre de Ahorro'};
+  retiro:'Retiro para gastar', usado:'Ya lo usé', aAhorro:'Retiro a tu sobre de Ahorro', tanda:'Cobro de tanda'};
 var _ultIdMov = 0;
 function movMeta(m, tipo, mto, extra) {
   if (!m.movs) m.movs = [];
@@ -8342,9 +8559,72 @@ function dlgDeshacerMovMeta(i) {
   dlg({e:'\u21A9\uFE0F', t:'¿Qué movimiento deshago?', s:lista.length ? m.nom + ' · saldo ' + fmx(m.actual || 0)
     : 'No hay movimientos que se puedan deshacer. Lo del cierre de mes no se deshace; usa "Retirar".', btns:btns});
 }
-function deshacerMovMeta(m, mv) {
+var ESTE_MOV_META = {sobre:'este abono', traspaso:'este traspaso', previo:'estos ahorros previos'};
+// "No alcanza" de una meta: cuánto le queda, por qué y qué hacer (estilo Fase 5).
+function salidasMeta(m) {
+  return r2((m.movs || []).reduce(function(t, mv) { return t + (movSale(mv) && !mv.deshecho ? r2(mv.mto - (Number(mv.devuelto) || 0)) : 0); }, 0));
+}
+function avisoNoAlcanzaMeta(m, inicio, falta, otra) {
+  var i = getMetas().indexOf(m), sal = salidasMeta(m);
+  dlg({e:'\u26A0\uFE0F', t:'No alcanza',
+    s:inicio + ', porque a ' + m.nom + ' solo le quedan ' + fmx(Number(m.actual) || 0) + (sal > 0 ? ': ya retiraste o usaste ' + fmx(sal) : '') +
+      '. Primero regresa ' + fmx(falta) + ' a ' + m.nom + (otra ? ', o ' + otra : '') + '.',
+    btns:[{l:'Ir a ' + m.nom, c:'s', f:function(){ dlgDetalleMeta(i); }}, {l:'Entendido', c:'p', f:null}]});
+}
+// Ver transacciones: un abono a meta desde un sobre cambia los dos lados.
+function abonoMetaDeReg(r) {
+  if (r.sobre === 'extra' || !(abonoMetaDe(r) > 0)) return null;
+  var res = null;
+  getMetas().forEach(function(m) {
+    (m.movs || []).forEach(function(mv) { if (!res && mv.tipo === 'sobre' && mv.regId === r.id && !mv.deshecho) res = {m:m, mv:mv}; });
+  });
+  if (res) return res;
+  var nom = String(r.nota || '').indexOf('Abono a meta: ') === 0 ? r.nota.slice(14) : null;
+  var m = nom ? getMetas().filter(function(x) { return x.nom === nom; })[0] : null;
+  return m ? {m:m, mv:{tipo:'sobre', mto:abonoMetaDe(r), regId:r.id, periodo:periodoDe(r)}} : null;
+}
+function movDeMeta(r, acc) {
+  var a = abonoMetaDeReg(r);
+  if (!a) return false;
+  if (acc === 'borrar') { deshacerMovMeta(a.m, a.mv, 'borrar'); return true; }
+  var m = a.m, mto = Number(r.mto) || 0;
+  dlg({e:'\u270F\uFE0F', t:'Corregir abono',
+    inf:'Abono de ' + nombreSobreId(r.sobre) + ' a ' + m.nom + ': ' + fmx(mto) + '\nCambian los dos: el gasto en ' + nombreSobreId(r.sobre) + ' y el saldo de ' + m.nom + '.',
+    inp:true, ph:'Nuevo monto', md:'decimal', val:mto,
+    btns:[{l:'Guardar', c:'p', f:function(v) {
+      var x = r2(parseFloat(v)), saldo = Number(m.actual) || 0;
+      if (!(x > 0)) { toast('Ingresa un monto válido'); return; }
+      if (x < mto && saldo < r2(mto - x)) {
+        avisoNoAlcanzaMeta(m, 'No puedes dejar este abono en ' + fmx(x), r2(mto - x - saldo), 'deja el abono en ' + fmx(r2(mto - saldo)) + ' como mínimo');
+        return;
+      }
+      m.actual = r2(saldo + x - mto);
+      r.mto = x; r.abonoMeta = x;
+      if (a.mv.id) a.mv.mto = x;
+      guardar(); actualizarUI(); renderSobres(); renderMetas(); renderTransaccionesDelSobre(r.sobre);
+      toast('Abono corregido: ' + fmx(mto) + ' → ' + fmx(x) + ' (' + nombreSobreId(r.sobre) + ' y ' + m.nom + ')');
+    }}, {l:'Cancelar', c:'s', f:null}]});
+  return true;
+}
+// Ver transacciones: el pago de un servicio se corrige con su "Deshacer".
+function movDeServicio(r, acc) {
+  var idx = -1, sv = null;
+  (E.servicios || []).forEach(function(x, i) {
+    if (sv) return;
+    if ((x.pagos || []).some(function(p) { return p.regId === r.id; }) || (r.origen && r.origen.tipo === 'servicio' && r.origen.id === x.id)) { sv = x; idx = i; }
+  });
+  if (!sv) return false;
+  var esUlt = ultimoGrupoPagosSrv(sv).some(function(p) { return p.regId === r.id; }) && puedeDeshacerPago(sv);
+  dlg({e:'\uD83D\uDD12', t:'Se maneja desde el servicio ' + sv.nom,
+    s:acc === 'editar' ? 'Este gasto es el pago de ' + sv.nom + '. Para corregirlo, deshaz el pago y vuelve a marcarlo con el monto correcto.'
+      : esUlt ? 'Este gasto es el pago de ' + sv.nom + '. Al borrarlo se deshace el pago y el recibo vuelve a quedar pendiente.'
+      : 'Este gasto es un pago de ' + sv.nom + ', pero no es el último. Solo se puede deshacer el último pago.',
+    btns:esUlt ? [{l:'Deshacer pago', c:'p', f:function(){ desmarcarPagado(idx); }}, {l:'Cancelar', c:'s', f:null}] : [{l:'Entendido', c:'p', f:null}]});
+  return true;
+}
+function deshacerMovMeta(m, mv, accion) {
   var saldo = Number(m.actual) || 0, mto = mv.mto;
-  var falta = function() { dlg({e:'\u26A0\uFE0F', t:'No alcanza', s:'La meta ' + m.nom + ' solo tiene ' + fmx(saldo) + '; no se puede deshacer ' + TIPO_MOV_META[mv.tipo].toLowerCase() + ' de ' + fmx(mto) + '.', btns:[{l:'Entendido', c:'p', f:null}]}); };
+  var falta = function() { avisoNoAlcanzaMeta(m, 'No puedes ' + (accion || 'deshacer') + ' ' + (ESTE_MOV_META[mv.tipo] || 'este movimiento') + ' de ' + fmx(mto), r2(mto - saldo), ''); };
   var hecho = function(msg) { mv.deshecho = new Date().toISOString(); guardar(); actualizarUI(); renderSobres(); renderMetas(); toast(msg); };
   var confirmar = function(txt, aplicar) { dlg({e:'\u21A9\uFE0F', t:'¿Deshacer?', s:txt, btns:[{l:'Sí, deshacer', c:'p', f:aplicar}, {l:'Cancelar', c:'s', f:null}]}); };
   if (mv.tipo === 'extra') {
@@ -8478,6 +8758,7 @@ function pendientesMes() {
   E.regs.forEach(function(r) {
     if (r.sobre !== 'extra' || periodoDe(r) !== p) return;
     if (r.sub === 'retiro' && retiroPendiente(r) > 0) out.push({r:r, tipo:'retiro', mto:retiroPendiente(r)});
+    if (r.sub === 'cobro' && cobroPendiente(r) > 0) out.push({r:r, tipo:'cobro', mto:cobroPendiente(r)});
     if (r.sub === 'ingreso' && r.destino && r.destino.tipo === 'pendiente' && Number(r.ingreso) > 0) out.push({r:r, tipo:'extra', mto:r2(r.ingreso)});
   });
   return out;
@@ -8485,7 +8766,7 @@ function pendientesMes() {
 function asignarPendiente(pd, sobreId, mto) {
   if (!E.limsExtraMes) E.limsExtraMes = {};
   E.limsExtraMes[sobreId] = r2((E.limsExtraMes[sobreId] || 0) + mto);
-  if (pd.tipo === 'retiro') {
+  if (pd.tipo === 'retiro' || pd.tipo === 'cobro') {
     if (!pd.r.asignado) pd.r.asignado = {};
     pd.r.asignado[sobreId] = r2((pd.r.asignado[sobreId] || 0) + mto);
   } else {
