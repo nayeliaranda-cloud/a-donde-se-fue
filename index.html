@@ -899,13 +899,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     <div class="sec-t">Metas Activas</div>
     <div id="metas-res"></div>
   </div>
-  <nav class="nav">
-    <button class="ni on" id="nav-ini" onclick="irA('p-ini')"><span class="ni-ico">🏠</span><span class="ni-lbl">Inicio</span></button>
-    <button class="ni" id="nav-metas" onclick="irA('p-metas');renderMetas()"><span class="ni-ico">🎯</span><span class="ni-lbl">Metas</span></button>
-    <button class="ni" id="nav-prog" onclick="irA('p-prog');renderProgreso()"><span class="ni-ico">🏅</span><span class="ni-lbl">Progreso</span></button>
-    <button class="ni" id="nav-aprende" onclick="irA('p-aprende');renderAprende()"><span class="ni-ico">📚</span><span class="ni-lbl">Aprende</span></button>
-    <button class="ni" id="nav-prf" onclick="irA('p-prf')"><span class="ni-ico">⚙️</span><span class="ni-lbl">Perfil</span></button>
-  </nav>
+  <nav class="nav"></nav>
 </div>
 
 <!-- REPORTES -->
@@ -948,12 +942,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div id="historia-lista"></div>
     </div>
   </div>
-  <nav class="nav">
-    <button class="ni" onclick="irA('p-ini')"><span class="ni-ico">🏠</span><span class="ni-lbl">Inicio</span></button>
-    <button class="ni on" onclick="irA('p-rep')"><span class="ni-ico">📊</span><span class="ni-lbl">Reportes</span></button>
-    <button class="ni" onclick="abrirSobre('tanda')"><span class="ni-ico">🤝</span><span class="ni-lbl">Mi Tandita</span></button>
-    <button class="ni" onclick="irA('p-prf')"><span class="ni-ico">⚙️</span><span class="ni-lbl">Perfil</span></button>
-  </nav>
+  <nav class="nav"></nav>
 </div>
 
 <!-- PERFIL -->
@@ -975,7 +964,8 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     <div class="cfg-g">
       <div class="cfg-gt">Mi dinero</div>
       <div class="cfg-i" onclick="dlgEditMonto()"><div class="cfg-ico">💰</div><div class="cfg-tx"><div class="cfg-n">¿Con cuánto cuento?</div><div class="cfg-s" id="cf-mto">No configurado</div></div><div>›</div></div>
-      <div class="cfg-i" onclick="abrirSobre('ahorro')"><div class="cfg-ico">🎯</div><div class="cfg-tx"><div class="cfg-n">Mis metas de ahorro</div><div class="cfg-s">Ver y editar metas</div></div><div>›</div></div>
+      <div class="cfg-i" onclick="irA('p-metas');renderMetas()"><div class="cfg-ico">&#x1F3AF;</div><div class="cfg-tx"><div class="cfg-n">Mis metas de ahorro</div><div class="cfg-s">Ver y editar metas</div></div><div>›</div></div>
+      <div class="cfg-i" onclick="irA('p-prog');renderProgreso()"><div class="cfg-ico">&#x1F3C5;</div><div class="cfg-tx"><div class="cfg-n">Mi progreso</div><div class="cfg-s">Racha, insignias y retos</div></div><div>›</div></div>
       <div class="cfg-i" onclick="abrirSobre('prestamos')"><div class="cfg-ico">💸</div><div class="cfg-tx"><div class="cfg-n">Lo que me Deben</div><div class="cfg-s" id="cf-pr">Sin préstamos</div></div><div>›</div></div>
     </div>
     <div class="cfg-g">
@@ -984,26 +974,21 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     </div>
     <div class="cfg-g">
       <div class="cfg-gt">Mi avatar</div>
-      <div class="cfg-i" onclick="if(exigirEscritura())irA('p-wiz')"><div class="cfg-ico" id="cf-av">👤</div><div class="cfg-tx"><div class="cfg-n">Cambiar foto de perfil</div><div class="cfg-s">Elige tu avatar favorito</div></div><div>›</div></div>
+      <div class="cfg-i" onclick="dlgAvatar()"><div class="cfg-ico" id="cf-av">&#x1F464;</div><div class="cfg-tx"><div class="cfg-n">Cambiar foto de perfil</div><div class="cfg-s">Elige tu avatar favorito</div></div><div>›</div></div>
     </div>
     <div class="cfg-g">
       <div class="cfg-gt">Mi cuenta</div>
       <div class="cfg-i" onclick="abrirPremium()"><div class="cfg-ico">⭐</div><div class="cfg-tx"><div class="cfg-n" id="cf-prem-n">Activar mi compra</div><div class="cfg-s" id="cf-prem-s">$199 pago único, sin suscripción</div></div><div>›</div></div>
-      <div class="cfg-i" onclick="respaldar()"><div class="cfg-ico">📧</div><div class="cfg-tx"><div class="cfg-n">Respaldar en Gmail</div><div class="cfg-s">Guardar datos por correo</div></div><div>›</div></div>
+      <div class="cfg-i" onclick="respaldar()"><div class="cfg-ico">&#x1F4E4;</div><div class="cfg-tx"><div class="cfg-n">Respaldar mis datos</div><div class="cfg-s">WhatsApp, correo o copiar</div></div><div>›</div></div>
       <div class="cfg-i" onclick="dlgRestaurar()"><div class="cfg-ico">📥</div><div class="cfg-tx"><div class="cfg-n">Restaurar mi información</div><div class="cfg-s">Si cambiaste de celular o perdiste tus datos</div></div><div>›</div></div>
       <div style="background:#FDF2EC;border-radius:10px;padding:10px 12px;margin:4px 0 2px;font-size:12px;color:#6B4C3B;line-height:1.5">
         💡 Guarda tu respaldo en <strong>Favoritos de WhatsApp</strong> para recuperarlo si cambias de cel
       </div>
-      <div class="cfg-i" onclick="if(exigirEscritura())irA('p-wiz')"><div class="cfg-ico">✏️</div><div class="cfg-tx"><div class="cfg-n">Editar mi perfil</div><div class="cfg-s">Nombre, cumpleaños, monto</div></div><div>›</div></div>
+      <div class="cfg-i" onclick="dlgEditarPerfil()"><div class="cfg-ico">&#x270F;&#xFE0F;</div><div class="cfg-tx"><div class="cfg-n">Editar mi perfil</div><div class="cfg-s">Nombre y cumpleaños</div></div><div>›</div></div>
       <div class="cfg-i" onclick="document.getElementById('mo-acerca').classList.add('on')"><div class="cfg-ico">ℹ️</div><div class="cfg-tx"><div class="cfg-n">Acerca de la app</div><div class="cfg-s">Versión, privacidad y contacto</div></div><div>›</div></div>
     </div>
   </div>
-  <nav class="nav">
-    <button class="ni" onclick="irA('p-ini')"><span class="ni-ico">🏠</span><span class="ni-lbl">Inicio</span></button>
-    <button class="ni" onclick="irA('p-rep')"><span class="ni-ico">📊</span><span class="ni-lbl">Reportes</span></button>
-    <button class="ni" onclick="abrirSobre('tanda')"><span class="ni-ico">🤝</span><span class="ni-lbl">Mi Tandita</span></button>
-    <button class="ni on" onclick="irA('p-prf')"><span class="ni-ico">⚙️</span><span class="ni-lbl">Perfil</span></button>
-  </nav>
+  <nav class="nav"></nav>
 </div>
 
 
@@ -1331,6 +1316,14 @@ document.addEventListener('DOMContentLoaded', function() {
   try { var g = localStorage.getItem('adsf4'); if (g) { var p = JSON.parse(g); for (var k in p) E[k] = p[k]; } } catch(e) {}
   // Init swipes
   ['mo-s','mo-rinc','mo-gal','mo-agenda'].forEach(function(id) { initSwipe(id); });
+  pintarBarras();
+  // Botón atrás (Android): ver alTocarAtras
+  window.addEventListener('popstate', alTocarAtras);
+  document.addEventListener('click', armarAtras, true);
+  armarAtras();
+  // "Acerca de" se cierra al tocar fuera
+  var moAc = document.getElementById('mo-acerca');
+  if (moAc) moAc.addEventListener('click', function(e) { if (e.target === moAc) cerrarMo('mo-acerca'); });
   // Cerrar diálogo al tocar fuera de la caja
   var dlgEl = document.getElementById('dlg');
   if (dlgEl) dlgEl.addEventListener('click', function(e) { if (e.target === dlgEl) cerrarDlg(); });
@@ -1687,8 +1680,10 @@ function wRecalc() {
 function dlgRestaurar() {
   var mo = document.createElement('div');
   mo.id = 'mo-rest';
+  mo.addEventListener('click', function(e) { if (e.target === mo) restCerrar(); });
   mo.style.cssText = 'display:flex;position:fixed;inset:0;z-index:9999;background:rgba(61,43,31,.7);align-items:center;justify-content:center;padding:20px';
-  mo.innerHTML = '<div style="background:#fff;border-radius:22px;width:100%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4);overflow:hidden">' +
+  mo.innerHTML = '<div style="background:#fff;border-radius:22px;width:100%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4);overflow:hidden;position:relative">' +
+    '<button onclick="restCerrar()" aria-label="Cerrar" style="position:absolute;top:12px;right:12px;background:var(--crd);border:none;width:30px;height:30px;border-radius:50%;font-size:14px;color:var(--cam);cursor:pointer">\u2715</button>' +
     '<div style="padding:18px 20px 14px">' +
     '<div style="font-size:28px;margin-bottom:6px">&#128190;</div>' +
     '<div style="font-family:var(--fd);font-size:17px;color:#3D2B1F;font-weight:700">Recuperar mis datos</div>' +
@@ -1916,13 +1911,72 @@ function irA(id) {
   if (id === 'p-prf') renderPerfil();
   if (id === 'p-wiz') { renderWiz(); }
   window.scrollTo(0, 0);
+  // Se enciende el botón de la pantalla en todas las barras. Progreso cuelga
+  // de Perfil y Diagnóstico de Aprende.
+  var enBarra = {'p-prog':'p-prf', 'p-diag':'p-aprende'}[id] || id;
   var ns = document.querySelectorAll('.ni');
-  var map = {'p-ini':0,'p-rep':1,'p-prf':3};
-  for (var i = 0; i < ns.length; i++) ns[i].classList.remove('on');
-  if (map[id] !== undefined) {
-    var nis = document.querySelectorAll('.ni');
-    if (nis[map[id]]) nis[map[id]].classList.add('on');
+  for (var i = 0; i < ns.length; i++) ns[i].classList.toggle('on', ns[i].getAttribute('data-p') === enBarra);
+  armarAtras();
+}
+
+// ════ BARRA DE ABAJO (Bloque 6) ═══════════════════
+var BARRA = [
+  ['p-ini', '\uD83C\uDFE0', 'Inicio', "irA('p-ini')"],
+  ['p-rep', '\uD83D\uDCCA', 'Reportes', "irA('p-rep')"],
+  ['p-metas', '\uD83C\uDFAF', 'Metas', "irA('p-metas');renderMetas()"],
+  ['p-aprende', '\uD83D\uDCDA', 'Aprende', "irA('p-aprende');renderAprende()"],
+  ['p-prf', '\u2699\uFE0F', 'Perfil', "irA('p-prf')"]
+];
+function pintarBarras() {
+  var html = BARRA.map(function(b) {
+    return '<button class="ni" data-p="' + b[0] + '" onclick="' + b[3] + '"><span class="ni-ico">' + b[1] + '</span><span class="ni-lbl">' + b[2] + '</span></button>';
+  }).join('');
+  var navs = document.querySelectorAll('nav.nav');
+  for (var i = 0; i < navs.length; i++) navs[i].innerHTML = html;
+}
+
+// ════ BOTÓN ATRÁS (Bloque 6) ══════════════════════
+// Dejamos una entrada extra en el historial. Al tocar atrás, el navegador la
+// quita (popstate): cerramos lo que esté encima y la volvemos a poner. En
+// Inicio, el primer toque avisa y deja pasar el segundo (2 s) para salir.
+var _atrasSalir = false;
+function armarAtras() {
+  _atrasSalir = false;
+  try { if (!(history.state && history.state.adsf)) history.pushState({adsf: 1}, ''); } catch (e) {}
+}
+function pantallaActiva() { var p = document.querySelector('.pant.activa'); return p ? p.id : ''; }
+function pasoWiz() {
+  for (var i = 3; i >= 1; i--) { var c = document.getElementById('wp' + i); if (c && c.style.display === 'block') return i; }
+  return 1;
+}
+// Cierra lo de más arriba o regresa una pantalla. false = no hay a dónde
+// regresar (Inicio, o el principio de la bienvenida).
+function atrasUnPaso() {
+  var i, din = ['mo-av', 'mo-rest', 'mo-limites'];
+  for (i = 0; i < din.length; i++) { var el = document.getElementById(din[i]); if (el) { el.remove(); return true; } }
+  var d = document.getElementById('dlg');
+  if (d && d.style.display === 'flex') { cerrarDlg(); return true; }
+  var mos = ['mo-acerca', 'mo-prem', 'mo-gal', 'mo-agenda', 'mo-rinc', 'mo-s'];
+  for (i = 0; i < mos.length; i++) { var m = document.getElementById(mos[i]); if (m && m.classList.contains('on')) { cerrarMo(mos[i]); return true; } }
+  var p = pantallaActiva();
+  if (p === 'p-wiz') { var n = pasoWiz(); if (n > 1) { wPaso(n - 1); return true; } return false; }
+  if (p === 'p-diag') {
+    if (diagIdx > 0 && diagIdx < PREGUNTAS.length) { diagAnterior(); return true; }
+    if (diagDesdeOnboarding) { var alFinal = diagIdx >= PREGUNTAS.length; diagDesdeOnboarding = false; irA('p-wiz'); wPaso(alFinal ? 2 : 1); return true; }
+    irA('p-aprende'); renderAprende(); return true;
   }
+  if (p === 'p-anal') return false;
+  if (p === 'p-prog') { irA('p-prf'); return true; }
+  if (p && p !== 'p-ini') { irA('p-ini'); return true; }
+  return false;
+}
+function alTocarAtras(e) {
+  if (e.state && e.state.adsf) return; // fue "adelante", no atrás
+  if (atrasUnPaso()) { armarAtras(); return; }
+  // Sin entrada extra: el siguiente atrás sale de la app.
+  _atrasSalir = true;
+  toast('Toca atrás otra vez para salir', 2000);
+  setTimeout(function() { if (_atrasSalir) armarAtras(); }, 2000);
 }
 
 // ════ UI ══════════════════════════════════════════
@@ -2288,7 +2342,7 @@ function renderCasa(cont, s) {
     html += '<div style="background:#fff;border-radius:10px;padding:16px;text-align:center;margin-bottom:12px">' +
       '<div style="font-size:32px;margin-bottom:7px">📅</div>' +
       '<div style="font-size:13px;font-weight:600;color:#3D2B1F;margin-bottom:4px">Sin servicios programados</div>' +
-      '<div style="font-size:12px;color:#7D5F4E;line-height:1.5">Agrega tus servicios y la app te avisará 10, 5 y 2 días antes de que venzan.</div>' +
+      '<div style="font-size:12px;color:#7D5F4E;line-height:1.5">Agrega tus servicios y verás un aviso en Inicio desde 10 días antes de que venzan.</div>' +
       '</div>';
   } else {
     activos.forEach(function(s) {
@@ -2392,19 +2446,21 @@ function abrirModalEdicionTransaccion(id) {
       {l:'Siguiente →', c:'p', f:function(v){
         var val = r2(parseFloat(v));
         if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); return; }
-        r.mto = val;
+        // El monto nuevo se guarda solo con "Guardar" u "Omitir nota".
         dlg({
           e:'📝', t:'Editar nota',
           s:'Escribe una nueva nota, o deja el campo vacío para quitarla',
-          inp:true, ph:'Nota (opcional)', md:'text',
+          inp:true, ph:'Nota (opcional)', md:'text', val:r.nota || '',
           btns:[
             {l:'Guardar', c:'p', f:function(v2){
+              r.mto = val;
               r.nota = (v2||'').trim();
               guardar(); actualizarUI(); renderSobres();
               renderTransaccionesDelSobre(r.sobre);
               toast('Transacción actualizada ✓');
             }},
             {l:'Omitir nota', c:'s', f:function(){
+              r.mto = val;
               guardar(); actualizarUI(); renderSobres();
               renderTransaccionesDelSobre(r.sobre);
               toast('Monto actualizado ✓');
@@ -2645,7 +2701,7 @@ function renderAgendaResumen() {
   if (!items.length) { el.textContent = 'Aún no tienes pagos programados'; return; }
   var urgentes = items.filter(function(i){ return i.dias <= 5 && !i.pagado; });
   el.textContent = urgentes.length
-    ? urgentes.length + ' pago' + (urgentes.length!==1?'s':'') + ' urgente' + (urgentes.length!==1?'s':'') + ' esta semana'
+    ? urgentes.length + ' pago' + (urgentes.length!==1?'s':'') + ' urgente' + (urgentes.length!==1?'s':'') + ' en los próximos 5 días'
     : items.length + ' pago' + (items.length!==1?'s':'') + ' programado' + (items.length!==1?'s':'') + ' este mes';
 }
 function abrirAgenda() {
@@ -2659,7 +2715,7 @@ function renderAgenda() {
     cont.innerHTML = '<div style="text-align:center;padding:26px 14px">' +
       '<div style="font-size:40px;margin-bottom:10px">📅</div>' +
       '<div style="font-size:14px;font-weight:600;color:#3D2B1F;margin-bottom:6px">Sin pagos programados</div>' +
-      '<div style="font-size:12px;color:#7D5F4E;line-height:1.5">Agrega tus servicios (luz, agua, internet…) desde Casa & Servicios, o el día de pago de tus tarjetas, para que la app te avise antes de que venzan.</div>' +
+      '<div style="font-size:12px;color:#7D5F4E;line-height:1.5">Agrega tus servicios (luz, agua, internet…) desde Casa & Servicios, o el día de pago de tus tarjetas, para ver un aviso en Inicio antes de que venzan: servicios desde 10 días antes; tarjetas y MSI desde 3 días antes.</div>' +
       '</div>';
     return;
   }
@@ -2684,7 +2740,8 @@ function dlgNuevoServicio() {
       {l:'📡 Internet',c:'s',f:function(){dlgCfgSrv({ico:'📡',nom:'Internet',per:'mensual'});}},
       {l:'📱 Celular',c:'s',f:function(){dlgCfgSrv({ico:'📱',nom:'Celular / Plan',per:'mensual'});}},
       {l:'🔥 Gas',c:'s',f:function(){dlgCfgSrv({ico:'🔥',nom:'Gas LP',per:'mensual'});}},
-      {l:'➕ Otro servicio',c:'p',f:function(){dlgSrvCustom();}}
+      {l:'\u2795 Otro servicio',c:'p',f:function(){dlgSrvCustom();}},
+      {l:'Cancelar',c:'s',f:null}
     ]
   });
 }
@@ -2712,7 +2769,8 @@ function dlgPerSrv(preset, dia) {
       {l:'📅 Bimestral',c:'s',f:function(){dlgMtoSrv(preset,dia,'bimestral');}},
       {l:'📅 Trimestral',c:'s',f:function(){dlgMtoSrv(preset,dia,'trimestral');}},
       {l:'📅 Semestral',c:'s',f:function(){dlgMtoSrv(preset,dia,'semestral');}},
-      {l:'📅 Anual',c:'s',f:function(){dlgMtoSrv(preset,dia,'anual');}}
+      {l:'\uD83D\uDCC5 Anual',c:'s',f:function(){dlgMtoSrv(preset,dia,'anual');}},
+      {l:'Cancelar',c:'s',f:null}
     ]
   });
 }
@@ -2732,7 +2790,8 @@ function dlgMtoSrv(preset, dia, per) {
         if (!E.servicios) E.servicios = [];
         E.servicios.push(nuevoServicio(preset, dia, per, 0));
         terminarAltaSrv(E.servicios.length - 1);
-      }}
+      }},
+      {l:'Cancelar',c:'s',f:null}
     ]
   });
 }
@@ -4777,6 +4836,44 @@ function dlgEditarPerfil() {
   });
 }
 
+// Cambiar avatar sin pasar por la bienvenida (N2)
+function dlgAvatar() {
+  if (!exigirEscritura()) return; // modo consulta
+  var sel = E.perfil.av || AVATARES[0];
+  var mo = document.createElement('div');
+  mo.id = 'mo-av';
+  mo.style.cssText = 'display:flex;position:fixed;inset:0;z-index:9999;background:rgba(61,43,31,.7);align-items:center;justify-content:center;padding:20px';
+  mo.innerHTML = '<div style="background:#fff;border-radius:22px;width:100%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,.4);padding:18px 20px;position:relative">' +
+    '<button onclick="cerrarAvatar()" aria-label="Cerrar" style="position:absolute;top:12px;right:12px;background:var(--crd);border:none;width:30px;height:30px;border-radius:50%;font-size:14px;color:var(--cam);cursor:pointer">\u2715</button>' +
+    '<div style="font-family:var(--fd);font-size:17px;color:#3D2B1F;font-weight:700;margin-bottom:12px">Elige tu avatar</div>' +
+    '<div class="av-grid" id="av-grid-prf" style="max-height:230px"></div>' +
+    '<button id="av-guardar" style="width:100%;padding:14px;background:#C4704F;color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px">Guardar</button>' +
+    '<button onclick="cerrarAvatar()" style="width:100%;padding:12px;background:#FAF6F0;color:#3D2B1F;border:none;border-radius:12px;font-size:14px;cursor:pointer">Cancelar</button>' +
+    '</div>';
+  mo.addEventListener('click', function(e) { if (e.target === mo) cerrarAvatar(); });
+  document.body.appendChild(mo);
+  var grid = document.getElementById('av-grid-prf');
+  AVATARES.forEach(function(av) {
+    var el = document.createElement('div');
+    el.className = 'av-item' + (av === sel ? ' on' : '');
+    el.textContent = av;
+    el.onclick = function() {
+      sel = av;
+      var its = grid.querySelectorAll('.av-item');
+      for (var i = 0; i < its.length; i++) its[i].classList.remove('on');
+      el.classList.add('on');
+    };
+    grid.appendChild(el);
+  });
+  document.getElementById('av-guardar').onclick = function() {
+    if (!exigirEscritura()) return; // modo consulta
+    E.perfil.av = sel;
+    guardar(); cerrarAvatar(); renderPerfil(); actualizarUI();
+    toast('Avatar actualizado ✓');
+  };
+}
+function cerrarAvatar() { var el = document.getElementById('mo-av'); if (el) el.remove(); }
+
 // ════ PREMIUM ═════════════════════════════════════
 function abrirPremium(){
   var lic = tieneLicencia();
@@ -4909,6 +5006,7 @@ function dlg(cfg) {
   // otro diálogo lo reemplaza).
   var alCerrarPrevio = window._dlgAlCerrar;
   window._dlgAlCerrar = cfg.alCerrar || null;
+  armarAtras();
   if (alCerrarPrevio) setTimeout(alCerrarPrevio, 0);
   st('dlg-e',cfg.e||'💬');st('dlg-t',cfg.t||'');
   var ds=document.getElementById('dlg-s');ds.textContent=cfg.s||'';ds.style.display=cfg.s?'block':'none';
@@ -5037,10 +5135,11 @@ function escAttrJs(s){
   return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function st(id,txt){var e=document.getElementById(id);if(e)e.textContent=txt;}
-function toast(msg){
+function toast(msg, ms){
   var t=document.getElementById('toast-el');if(!t)return;
   t.textContent=msg;t.classList.add('on');
-  setTimeout(function(){t.classList.remove('on');},2800);
+  clearTimeout(t._tm);
+  t._tm=setTimeout(function(){t.classList.remove('on');},ms||2800);
 }
 
 
@@ -5843,7 +5942,8 @@ function dlgOpcionesEnvio(snapshot) {
       {l: '📧 Correo', c: 's', f: function() { enviarCorreoCierre(snapshot); }},
       {l: '📋 Copiar texto', c: 's', f: function() { copiarTextoCierre(snapshot); }},
       {l: '📄 Descargar PDF', c: 's', f: function() { cerrarDlg(); descargarPDFCierre(snapshot); }},
-      {l: 'Ver Mi Historia', c: 's', f: function() { cerrarDlg(); irA('p-rep'); renderReportes(); }}
+      {l: 'Ver Mi Historia', c: 's', f: function() { cerrarDlg(); irA('p-rep'); renderReportes(); }},
+      {l: 'Cerrar', c: 's', f: null}
     ]
   });
 }
@@ -6748,15 +6848,28 @@ function getTarjetas() {
 }
 // Antes, "¿Cuánto pagas al mes?" se guardaba como pagoMin. Ahora el mínimo se
 // calcula (regla de Banxico) y lo que escribiste es lo que planeas pagar.
+// La tasa que pone la app al dar de alta es CAT ÷ 1.3; si es distinta, la
+// usuaria ya la capturó (tasaReal).
 function normalizarTarjetas() {
   var cambio = false;
   getTarjetas().forEach(function(t) {
-    if (t.pagoMin === undefined) return;
-    if (t.pagoPlan === undefined && Number(t.pagoMin) > 0) t.pagoPlan = r2(Number(t.pagoMin));
-    delete t.pagoMin;
-    cambio = true;
+    if (t.pagoMin !== undefined) {
+      if (t.pagoPlan === undefined && Number(t.pagoMin) > 0) t.pagoPlan = r2(Number(t.pagoMin));
+      delete t.pagoMin;
+      cambio = true;
+    }
+    if (t.tasaReal === undefined && t.tasa != null && t.cat != null && Number(t.tasa) !== Math.round(Number(t.cat) / 1.3)) {
+      t.tasaReal = true;
+      cambio = true;
+    }
   });
   return cambio;
+}
+// Tasa anual para los cálculos: la capturada o, si no, la estimada (CAT ÷ 1.3).
+function tasaEstimadaTC(t) { return !t.tasaReal; }
+function tasaTC(t) {
+  if (t.tasaReal) return Number(t.tasa) || 0;
+  return t.cat ? Math.round(Number(t.cat) / 1.3) : (Number(t.tasa) || 36);
 }
 
 // ── RENDER DENTRO DEL SOBRE DEUDAS ───────────────
@@ -6812,7 +6925,7 @@ function renderTarjetaCard(t, i) {
 
 function buildTarjetaBody(t, i) {
   var html = '';
-  var tasa = t.tasa || 36;
+  var tasa = tasaTC(t);
   var saldo = Math.max(0, t.saldo || 0);
   var min = minimoTC(saldo, tasa, t.limite);
   var plan = pagoPlanTC(t);
@@ -6858,7 +6971,7 @@ function buildTarjetaBody(t, i) {
     (t.saldo < 0 ? '<div class="tc-dato"><div class="tc-dato-lbl">Saldo a favor</div><div class="tc-dato-val" style="color:#4E7A52">' + fmx(-t.saldo) + '</div></div>'
       : '<div class="tc-dato"><div class="tc-dato-lbl">Saldo actual</div><div class="tc-dato-val" style="color:#C4704F">' + fmx(saldo) + '</div></div>') +
     '<div class="tc-dato"><div class="tc-dato-lbl">Límite</div><div class="tc-dato-val">' + fmx(t.limite||0) + '</div></div>' +
-    '<div class="tc-dato"><div class="tc-dato-lbl">Tasa anual</div><div class="tc-dato-val">' + tasa + '%</div></div>' +
+    '<div class="tc-dato"><div class="tc-dato-lbl">Tasa anual' + (tasaEstimadaTC(t) ? ' (estimada)' : '') + '</div><div class="tc-dato-val">' + tasa + '%</div></div>' +
     '<div class="tc-dato"><div class="tc-dato-lbl">CAT aprox</div><div class="tc-dato-val" style="color:#C4704F">' + (t.cat||Math.round(tasa*1.3)) + '%</div></div>' +
   '</div>';
 
@@ -6937,6 +7050,9 @@ function buildTarjetaBody(t, i) {
         buildSimRes(t, simIni) +
       '</div>' +
       '<div class="tc-sim-nota" style="font-size:11px;color:#7D5F4E;margin-top:8px;text-align:center">Cálculo aproximado. Incluye IVA de 16% sobre intereses.</div>' +
+      (tasaEstimadaTC(t) ? '<div class="tc-sim-tasa" style="font-size:11px;color:#9E5538;margin-top:4px;text-align:center">' +
+        (t.cat ? 'Tasa estimada a partir de tu CAT.' : 'Tasa estimada (' + tasa + '%).') +
+        ' Captura la tasa de tu estado de cuenta para un cálculo más exacto.</div>' : '') +
     '</div>';
   }
 
@@ -6968,7 +7084,7 @@ function minimoTC(saldo, tasa, limite) {
   var m = Math.max(saldo * 0.015 + i, (Number(limite) || 0) * 0.0125);
   return Math.ceil(r2(Math.min(m, saldo + i)));
 }
-function minimoDeTarjeta(t) { return minimoTC(t.saldo, t.tasa || 36, t.limite); }
+function minimoDeTarjeta(t) { return minimoTC(t.saldo, tasaTC(t), t.limite); }
 function pagoPlanTC(t) { return Number(t.pagoPlan) || 0; }
 // Pagando solo el mínimo, que se recalcula cada mes con el saldo que queda.
 function simSoloMinimo(saldo, tasa, limite) {
@@ -7006,7 +7122,7 @@ function txtPlazoTC(m) {
 
 function buildSimRes(t, pago) {
   if (!pago || pago <= 0) return '<div style="font-size:12px;color:#7D5F4E;text-align:center">Ingresa un monto</div>';
-  var tasa = t.tasa || 36, saldo = Math.max(0, Number(t.saldo) || 0);
+  var tasa = tasaTC(t), saldo = Math.max(0, Number(t.saldo) || 0);
   var r = simPagoFijo(saldo, tasa, pago);
   if (r.nunca) {
     return '<div style="background:#FFF5F0;border-radius:8px;padding:10px 12px;border-left:4px solid #D9534F;font-size:12px;color:#9E5538;line-height:1.5"><div style="font-weight:700;margin-bottom:4px">\u26A0\uFE0F Tu deuda nunca baja</div><div>Con ' + fmx(pago) + ' al mes tu deuda nunca baja: el interés de este mes es ' + fmx(Math.round(r.interes)) + '.</div><div style="margin-top:4px;font-size:11px">\uD83D\uDC49 Aumenta tu pago.</div></div>';
@@ -7277,12 +7393,13 @@ function dlgEditarTarjeta(idx) {
         dlg({
           e: t.ico, t: 'Tasa de interés de ' + t.nom,
           s: 'La tasa de interés anual ordinaria (sin comisiones ni seguros). Con ella, y no con el CAT, se calculan tus intereses y tu pago mínimo. Revísala en tu estado de cuenta.',
-          inp: true, ph: 'Tasa actual: ' + (t.tasa||36) + '%', md: 'decimal',
+          inp: true, ph: 'Tasa actual: ' + tasaTC(t) + '%' + (tasaEstimadaTC(t) ? ' (estimada)' : ''), md: 'decimal',
           btns: [
             {l: 'Guardar', c: 'p', f: function(v) {
               var val = r2(parseFloat(v));
               if (isNaN(val) || val < 0 || val > 300) { toast('Ingresa una tasa válida (0-300%)'); return; }
               getTarjetas()[idx].tasa = val;
+              getTarjetas()[idx].tasaReal = true;
               guardar(); abrirSobre('deudas');
               toast('Tasa actualizada a ' + val + '% ✓');
             }},
@@ -7505,7 +7622,7 @@ function dlgAbonarTarjetaMonto(idx, seleccion) {
   dlg({
     e: '💸', t: 'Registrar pago a ' + t.nom,
     inf: (t.saldo < 0 ? 'Saldo a favor: ' + fmx(-t.saldo) : 'Saldo actual (cargos regulares): ' + fmx(t.saldo)) +
-      (deuda > 0 ? '\nMínimo de este mes: ' + fmx(minimoTC(deuda, t.tasa || 36, t.limite)) : '') +
+      (deuda > 0 ? '\nMínimo de este mes: ' + fmx(minimoTC(deuda, tasaTC(t), t.limite)) : '') +
       (pagoPlanTC(t) ? '\nLo que planeas pagar: ' + fmx(pagoPlanTC(t)) : '') +
       (totalMSI > 0 ? '\nMensualidades MSI incluidas: ' + fmx(totalMSI) : ''),
     inp: true, ph: '$ ¿Cuánto pagaste EN TOTAL?', md: 'decimal',
@@ -7566,7 +7683,7 @@ function registrarPagoTarjeta(idx, rev, msis, val) {
   var antes = r2(Number(t.saldo) || 0);
   t.saldo = r2(antes - rev);
   if (t.saldo <= 0) t.esTotalera = true;
-  var pagoMinRef = minimoTC(antes, t.tasa || 36, t.limite);
+  var pagoMinRef = minimoTC(antes, tasaTC(t), t.limite);
   if (pagoMinRef > 0 && rev > pagoMinRef) E.pagoMayorMinimo = true;
   guardar();
   abrirSobre('deudas');
@@ -8030,7 +8147,8 @@ function dlgNuevoMSI() {
                         {l: 'Cancelar', c: 's', f: null}
                       ]
                     });
-                  }}
+                  }},
+                  {l: 'Cancelar', c: 's', f: null}
                 ]
               });
             }},
@@ -8493,7 +8611,8 @@ function dlgMetaCalcMonto(dat){
               guardarMetaFinal();
             }},
             {l:'🔄 Cambiar monto',c:'s',f:function(){ dlgMetaCalcMonto(dat); }},
-            {l:'📅 Mejor por fecha',c:'s',f:function(){ dlgMetaCalcFecha(dat); }}
+            {l:'\uD83D\uDCC5 Mejor por fecha',c:'s',f:function(){ dlgMetaCalcFecha(dat); }},
+            {l:'Cancelar',c:'s',f:null}
           ]
         });
       }},
@@ -8522,7 +8641,8 @@ function dlgMetaCalcFecha(dat){
               guardarMetaFinal();
             }},
             {l:'🔄 Cambiar meses',c:'s',f:function(){ dlgMetaCalcFecha(dat); }},
-            {l:'💰 Mejor por monto',c:'s',f:function(){ dlgMetaCalcMonto(dat); }}
+            {l:'\uD83D\uDCB0 Mejor por monto',c:'s',f:function(){ dlgMetaCalcMonto(dat); }},
+            {l:'Cancelar',c:'s',f:null}
           ]
         });
       }},
@@ -8613,7 +8733,8 @@ function dlgOrigenAbono(i, val){
         guardar();cerrarDlg();renderMetas();
         if(E.metas[i].actual>=E.metas[i].meta){setTimeout(function(){toast('🎉 ¡Meta cumplida!');verificarInsignias();},300);}
         else{toast('✅ Abono guardado — dinero previo registrado');}
-      }}
+      }},
+      {l:'Cancelar',c:'s',f:null}
     ]
   });
 }
@@ -9576,9 +9697,11 @@ function renderPreguntaDiag(){
     '<div class="diag-preg">'+q.p+'</div>'+
     (diagDesdeOnboarding ? '<button onclick="saltarDiagOnboarding()" style="background:none;border:none;color:var(--cac);font-size:12px;text-decoration:underline;cursor:pointer;display:block;margin:14px auto 0">Saltar por ahora →</button>' : '')+
     OPTS_D.map(function(op,oi){return '<div class="diag-op" onclick="responderDiag('+oi+')"><span class="diag-op-ico">'+op.ico+'</span><span class="diag-op-txt">'+op.txt+'</span></div>';}).join('')+
+    (diagIdx > 0 ? '<button onclick="diagAnterior()" style="background:none;border:none;color:var(--cam);font-size:13px;cursor:pointer;display:block;margin:14px auto 0">\u2190 Pregunta anterior</button>' : '')+
   '</div>';
 }
 function responderDiag(oi){diagResp.push({pilar:PREGUNTAS[diagIdx].pilar,pts:OPTS_D[oi].pts});diagIdx++;renderPreguntaDiag();}
+function diagAnterior(){ if(diagIdx<=0)return; diagIdx--; diagResp.pop(); renderPreguntaDiag(); }
 function renderResultadoDiag(){
   var cont=document.getElementById('diag-cont');
   var total=diagResp.reduce(function(s,r){return s+r.pts;},0);var max=PREGUNTAS.length*2;
@@ -9601,7 +9724,7 @@ function renderResultadoDiag(){
     control:{
       bajo:{txt:'Empieza por registrar 1 semana completa de gastos',fn:"irA('p-ini');toast('🌱 Empieza con un gasto de hoy')"},
       medio:{txt:'Define un presupuesto mensual por sobre y síguelo 7 días',fn:"irA('p-ini')"},
-      alto:{txt:'Ya llevas buen control — activa recordatorios diarios para no perder el hábito',fn:"irA('p-ini')"}
+      alto:{txt:'Ya llevas buen control — registra tus gastos cada día para no perder el hábito',fn:"irA('p-ini')"}
     },
     shock:{
       bajo:{txt:'Crea tu fondo de emergencias — aunque sea con $50 al inicio',fn:"irA('p-metas');renderMetas()"},
@@ -9822,13 +9945,7 @@ function mostrarAnalisisInicial() {
     <div class="meta-tabs" id="metas-tabs"></div>
   </div>
   <div style="padding:16px 16px 100px;overflow-y:auto;flex:1" id="metas-cont"></div>
-  <nav class="nav">
-    <button class="ni" onclick="irA('p-ini')"><span class="ni-ico">🏠</span><span class="ni-lbl">Inicio</span></button>
-    <button class="ni on" onclick="irA('p-metas');renderMetas()"><span class="ni-ico">🎯</span><span class="ni-lbl">Metas</span></button>
-    <button class="ni" onclick="irA('p-prog');renderProgreso()"><span class="ni-ico">🏅</span><span class="ni-lbl">Progreso</span></button>
-    <button class="ni" onclick="irA('p-aprende');renderAprende()"><span class="ni-ico">📚</span><span class="ni-lbl">Aprende</span></button>
-    <button class="ni" onclick="irA('p-prf')"><span class="ni-ico">⚙️</span><span class="ni-lbl">Perfil</span></button>
-  </nav>
+  <nav class="nav"></nav>
 </div>
 
 <!-- ── PROGRESO ───────────────────────────────────── -->
@@ -9839,13 +9956,7 @@ function mostrarAnalisisInicial() {
     </div>
   </div>
   <div style="padding:16px 16px 100px;overflow-y:auto;flex:1" id="prog-cont"></div>
-  <nav class="nav">
-    <button class="ni" onclick="irA('p-ini')"><span class="ni-ico">🏠</span><span class="ni-lbl">Inicio</span></button>
-    <button class="ni" onclick="irA('p-metas');renderMetas()"><span class="ni-ico">🎯</span><span class="ni-lbl">Metas</span></button>
-    <button class="ni on" onclick="irA('p-prog');renderProgreso()"><span class="ni-ico">🏅</span><span class="ni-lbl">Progreso</span></button>
-    <button class="ni" onclick="irA('p-aprende');renderAprende()"><span class="ni-ico">📚</span><span class="ni-lbl">Aprende</span></button>
-    <button class="ni" onclick="irA('p-prf')"><span class="ni-ico">⚙️</span><span class="ni-lbl">Perfil</span></button>
-  </nav>
+  <nav class="nav"></nav>
 </div>
 
 <!-- ── DIAGNÓSTICO ────────────────────────────────── -->
@@ -9855,13 +9966,7 @@ function mostrarAnalisisInicial() {
     <div style="font-family:var(--fd);font-size:22px;font-weight:700">Diagnóstico 🩺</div>
   </div>
   <div style="padding:20px 16px 100px;overflow-y:auto;flex:1" id="diag-cont"></div>
-  <nav class="nav" id="diag-nav">
-    <button class="ni" onclick="irA('p-ini')"><span class="ni-ico">🏠</span><span class="ni-lbl">Inicio</span></button>
-    <button class="ni" onclick="irA('p-metas');renderMetas()"><span class="ni-ico">🎯</span><span class="ni-lbl">Metas</span></button>
-    <button class="ni" onclick="irA('p-prog');renderProgreso()"><span class="ni-ico">🏅</span><span class="ni-lbl">Progreso</span></button>
-    <button class="ni on" onclick="irA('p-aprende');renderAprende()"><span class="ni-ico">📚</span><span class="ni-lbl">Aprende</span></button>
-    <button class="ni" onclick="irA('p-prf')"><span class="ni-ico">⚙️</span><span class="ni-lbl">Perfil</span></button>
-  </nav>
+  <nav class="nav" id="diag-nav"></nav>
 </div>
 
 <!-- ── APRENDE Y CRECE ────────────────────────────── -->
@@ -9872,13 +9977,7 @@ function mostrarAnalisisInicial() {
     </div>
   </div>
   <div style="padding:16px 16px 100px;overflow-y:auto;flex:1" id="aprende-cont"></div>
-  <nav class="nav">
-    <button class="ni" onclick="irA('p-ini')"><span class="ni-ico">🏠</span><span class="ni-lbl">Inicio</span></button>
-    <button class="ni" onclick="irA('p-metas');renderMetas()"><span class="ni-ico">🎯</span><span class="ni-lbl">Metas</span></button>
-    <button class="ni" onclick="irA('p-prog');renderProgreso()"><span class="ni-ico">🏅</span><span class="ni-lbl">Progreso</span></button>
-    <button class="ni on" onclick="irA('p-aprende');renderAprende()"><span class="ni-ico">📚</span><span class="ni-lbl">Aprende</span></button>
-    <button class="ni" onclick="irA('p-prf')"><span class="ni-ico">⚙️</span><span class="ni-lbl">Perfil</span></button>
-  </nav>
+  <nav class="nav"></nav>
 </div>
 
 
