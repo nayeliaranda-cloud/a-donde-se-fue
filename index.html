@@ -1870,6 +1870,7 @@ function guardarLimitesEditados() {
 function iniciarApp() {
   if (normalizarServicios()) guardar(); // estructura v2 (también al restaurar)
   if (normalizarMetas()) guardar(); // id de cada meta (ingresos extra, Fase 3)
+  if (normalizarTarjetas()) guardar(); // pagoMin → pagoPlan (Bloque 6)
   iniciarPruebaSiFalta();
   sincronizarHoraReal();
   actualizarUI();
@@ -6745,6 +6746,18 @@ function getTarjetas() {
   if (!E.tarjetas) E.tarjetas = [];
   return E.tarjetas;
 }
+// Antes, "¿Cuánto pagas al mes?" se guardaba como pagoMin. Ahora el mínimo se
+// calcula (regla de Banxico) y lo que escribiste es lo que planeas pagar.
+function normalizarTarjetas() {
+  var cambio = false;
+  getTarjetas().forEach(function(t) {
+    if (t.pagoMin === undefined) return;
+    if (t.pagoPlan === undefined && Number(t.pagoMin) > 0) t.pagoPlan = r2(Number(t.pagoMin));
+    delete t.pagoMin;
+    cambio = true;
+  });
+  return cambio;
+}
 
 // ── RENDER DENTRO DEL SOBRE DEUDAS ───────────────
 function renderTarjetas(cont) {
@@ -6801,7 +6814,8 @@ function buildTarjetaBody(t, i) {
   var html = '';
   var tasa = t.tasa || 36;
   var saldo = Math.max(0, t.saldo || 0);
-  var min = t.pagoMin || Math.max(200, Math.round(saldo * 0.015));
+  var min = minimoTC(saldo, tasa, t.limite);
+  var plan = pagoPlanTC(t);
 
   // ── Datos básicos ────────────────────────────────
   // Calcular deuda liquidada desde el saldo inicial
@@ -6890,30 +6904,39 @@ function buildTarjetaBody(t, i) {
 
   // ── Costo del mínimo ─────────────────────────────
   if (!esTot && saldo > 0) {
-    var result = calcMinimoVsTotal(saldo, tasa, min);
+    var sm = simSoloMinimo(saldo, tasa, t.limite);
     html += '<div class="tc-alerta">' +
-      '<div class="tc-alerta-tit">⚠️ Si solo pagas el mínimo (' + fmx(min) + '/mes)</div>' +
-      '<div class="tc-alerta-row"><span class="tc-alerta-lbl">Terminas de pagar en</span><span class="tc-alerta-val mal">' + result.mesesMin + ' meses (' + result.aniosMin + ')</span></div>' +
-      '<div class="tc-alerta-row"><span class="tc-alerta-lbl">Total que pagarás</span><span class="tc-alerta-val mal">' + fmx(result.totalMin) + '</span></div>' +
-      '<div class="tc-alerta-row"><span class="tc-alerta-lbl">Solo de intereses</span><span class="tc-alerta-val mal">' + fmx(result.interesesMin) + '</span></div>' +
+      '<div class="tc-alerta-tit">\u26A0\uFE0F Si solo pagas el mínimo (' + fmx(min) + ' este mes)</div>' +
+      '<div class="tc-alerta-row"><span class="tc-alerta-lbl">Terminas de pagar en</span><span class="tc-alerta-val mal">' + (sm.largo ? 'Más de 50 años' : txtPlazoTC(sm.meses)) + '</span></div>' +
+      '<div class="tc-alerta-row"><span class="tc-alerta-lbl">Total que pagarás</span><span class="tc-alerta-val mal">' + fmx(sm.total) + '</span></div>' +
+      '<div class="tc-alerta-row"><span class="tc-alerta-lbl">Solo de intereses</span><span class="tc-alerta-val mal">' + fmx(sm.intereses) + '</span></div>' +
       '<div style="margin-top:8px;font-size:12px;color:#9E5538;line-height:1.4">' +
-        '👆 Estás pagando <strong>' + fmx(result.interesesMin) + ' extra</strong> por ' + fmx(saldo) + ' que debes.' +
+        '\uD83D\uDC46 Pagarías <strong>' + fmx(sm.intereses) + ' extra</strong> por ' + fmx(saldo) + ' que debes.' +
       '</div>' +
+      '<div style="margin-top:6px;font-size:11px;color:#7D5F4E;line-height:1.4">El mínimo baja conforme baja tu saldo. Se calcula con la regla de Banxico, sin tus MSI.</div>' +
     '</div>';
+    if (plan > 0) {
+      html += '<div class="tc-plan" style="background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#3D2B1F;line-height:1.5">' +
+        '\uD83D\uDCB0 Lo que planeas pagar: <strong>' + fmx(plan) + ' al mes</strong>' +
+        (plan < min ? '<div class="tc-plan-aviso" style="color:#B5543C;font-weight:600;margin-top:4px">\u26A0\uFE0F Tu pago es menor al mínimo de ' + fmx(min) + '. El banco te cobrará cargos y afecta tu historial.</div>' : '') +
+      '</div>';
+    }
 
     // ── Simulador ────────────────────────────────────
+    var simIni = plan > 0 ? plan : Math.round(min * 2);
     html += '<div class="tc-sim">' +
       '<div class="tc-sim-tit">📊 Simulador — ¿Qué pasa si pago más?</div>' +
       '<div class="tc-sim-inp-row">' +
         '<label>Pago mensual:</label>' +
         '<div style="display:flex;align-items:center;gap:4px">' +
           '<span style="font-size:14px;font-weight:600;color:#4E7A52">$</span>' +
-          '<input type="number" class="tc-sim-inp" id="sim-inp-' + i + '" value="' + Math.round(min * 2) + '" inputmode="decimal" aria-label="Pago mensual a simular" oninput="actualizarSim(' + i + ',' + saldo + ',' + tasa + ')">' +
+          '<input type="number" class="tc-sim-inp" id="sim-inp-' + i + '" value="' + simIni + '" inputmode="decimal" aria-label="Pago mensual a simular" oninput="actualizarSim(' + i + ')">' +
         '</div>' +
       '</div>' +
       '<div class="tc-sim-res" id="sim-res-' + i + '">' +
-        buildSimRes(saldo, tasa, Math.round(min * 2), result) +
+        buildSimRes(t, simIni) +
       '</div>' +
+      '<div class="tc-sim-nota" style="font-size:11px;color:#7D5F4E;margin-top:8px;text-align:center">Cálculo aproximado. Incluye IVA de 16% sobre intereses.</div>' +
     '</div>';
   }
 
@@ -6930,112 +6953,82 @@ function buildTarjetaBody(t, i) {
   return html;
 }
 
-// ── CÁLCULO MÍNIMO VS TOTAL ───────────────────────
-// ── CÁLCULO MÍNIMO VS TOTAL (MEJORADO) ───────────────────────
-function calcMinimoVsTotal(saldo, tasa, pagoMensual) {
-  var tasaMensual = tasa / 100 / 12;
-  var bal = saldo;
-  var mesesMin = 0;
-  var totalPagadoMin = 0;
-  var pagoMin = pagoMensual;
-
-  // ⚠️ VALIDACIÓN: ¿Es posible pagar?
-  var interesInicial = saldo * tasaMensual;
-  if (pagoMensual > 0 && pagoMensual < interesInicial) {
-    // El pago es menor que el interés del primer mes
-    return {
-      mesesMin: -1,
-      totalMin: 0,
-      interesesMin: 0,
-      aniosMin: "Imposible",
-      error: true,
-      errorMsg: "El pago de $" + Math.round(pagoMensual) + "/mes es insuficiente. Los intereses de ese mes serían $" + Math.round(interesInicial) + "."
-    };
-  }
-
-  // Calcular con pago mínimo (1.5% del saldo, mínimo $200)
-  var balMin = saldo;
-  while (balMin > 0 && mesesMin < 600) {
-    var interes = balMin * tasaMensual;
-    var min = pagoMensual;  // ✅ FIX: Usar el parámetro que se pasó
-    if (min > balMin + interes) min = balMin + interes;
-    totalPagadoMin += min;
-    balMin = balMin + interes - min;
-    if (balMin < 1) balMin = 0;
-    mesesMin++;
-  }
-  
-  // ⚠️ Alerta si alcanzó el máximo de 600 meses
-  if (mesesMin >= 600) {
-    return {
-      mesesMin: 600,
-      totalMin: totalPagadoMin,
-      interesesMin: totalPagadoMin - saldo,
-      aniosMin: "50 años",
-      error: true,
-      errorMsg: "Con este pago, tardarías más de 50 años (600 meses) en pagar la deuda. Considera aumentar el pago."
-    };
-  }
-
-  var interesesMin = totalPagadoMin - saldo;
-  var aniosMin = mesesMin >= 12
-    ? Math.floor(mesesMin/12) + ' año' + (Math.floor(mesesMin/12)!==1?'s':'') +
-      (mesesMin%12>0?' y '+mesesMin%12+' mes'+(mesesMin%12!==1?'es':''):'')
-    : mesesMin + ' meses';
-
-  return {mesesMin, totalMin: totalPagadoMin, interesesMin, aniosMin, error: false};
+// ── INTERESES, MÍNIMO Y SIMULADOR (Bloque 6) ─────
+// El interés usa la TASA anual ordinaria (no el CAT) más IVA de 16%.
+var IVA_INTERES = 0.16;
+function interesMesTC(saldo, tasa) {
+  return Math.max(0, Number(saldo) || 0) * (Number(tasa) || 0) / 100 / 12 * (1 + IVA_INTERES);
 }
-
-function buildSimRes(saldo, tasa, pago, resultMin) {
-  if (!pago || pago <= 0) return '<div style="font-size:12px;color:#7D5F4E;text-align:center">Ingresa un monto</div>';
-  var tasaMensual = tasa / 100 / 12;
-  var bal = saldo;
-  var meses = 0;
-  var totalPagado = 0;
-  var interesInicial = saldo * tasaMensual;
-
-  // ⚠️ VALIDACIÓN: ¿Es posible pagar?
-  if (pago < interesInicial) {
-    return '<div style="background:#FFF5F0;border-radius:8px;padding:10px 12px;border-left:4px solid #D9534F;font-size:12px;color:#9E5538;line-height:1.5"><div style="font-weight:700;margin-bottom:4px">⚠️ Pago insuficiente</div><div>El interés de este mes es $' + Math.round(interesInicial) + '.</div><div>Tu pago ($' + Math.round(pago) + ') no lo cubre.</div><div style="margin-top:4px;font-size:11px">👉 La deuda crecerá cada mes. Aumenta tu pago.</div></div>';
-  }
-
-  // Calcular normalmente
+// Pago mínimo con la regla de Banxico: el mayor entre (1.5% del saldo +
+// intereses + IVA) y 1.25% del límite, sin pasar de lo que debes. Sin MSI.
+function minimoTC(saldo, tasa, limite) {
+  saldo = Math.max(0, Number(saldo) || 0);
+  if (saldo <= 0) return 0;
+  var i = interesMesTC(saldo, tasa);
+  var m = Math.max(saldo * 0.015 + i, (Number(limite) || 0) * 0.0125);
+  return Math.ceil(r2(Math.min(m, saldo + i)));
+}
+function minimoDeTarjeta(t) { return minimoTC(t.saldo, t.tasa || 36, t.limite); }
+function pagoPlanTC(t) { return Number(t.pagoPlan) || 0; }
+// Pagando solo el mínimo, que se recalcula cada mes con el saldo que queda.
+function simSoloMinimo(saldo, tasa, limite) {
+  saldo = Math.max(0, Number(saldo) || 0);
+  var bal = saldo, meses = 0, total = 0;
   while (bal > 0 && meses < 600) {
-    var interes = bal * tasaMensual;
-    var p = Math.min(pago, bal + interes);
-    totalPagado += p;
-    bal = bal + interes - p;
+    var i = interesMesTC(bal, tasa), p = Math.min(minimoTC(bal, tasa, limite), bal + i);
+    total += p; bal = bal + i - p;
     if (bal < 1) bal = 0;
     meses++;
   }
-
-  // ⚠️ Alerta si alcanzó 600 meses
-  if (meses >= 600) {
-    return '<div style="background:#FFF5F0;border-radius:8px;padding:10px 12px;border-left:4px solid #D9534F;font-size:12px;color:#9E5538;line-height:1.5"><div style="font-weight:700;margin-bottom:4px">⚠️ Plazo muy largo</div><div>Tardarías más de 50 años (600 meses) en pagar.</div><div style="margin-top:4px;font-size:11px">👉 Aumenta tu pago mensual para reducir plazos.</div></div>';
+  return {meses: meses, total: r2(total), intereses: r2(total - saldo), largo: meses >= 600};
+}
+// Pagando lo mismo cada mes. nunca: el pago no cubre ni el interés del mes.
+function simPagoFijo(saldo, tasa, pago) {
+  saldo = Math.max(0, Number(saldo) || 0);
+  var i0 = interesMesTC(saldo, tasa);
+  if (pago <= i0) return {nunca: true, interes: i0};
+  var bal = saldo, meses = 0, total = 0;
+  while (bal > 0 && meses < 600) {
+    var i = interesMesTC(bal, tasa), p = Math.min(pago, bal + i);
+    total += p; bal = bal + i - p;
+    if (bal < 1) bal = 0;
+    meses++;
   }
-
-  var intereses = totalPagado - saldo;
-  var ahorro = (resultMin && !resultMin.error ? resultMin.interesesMin - intereses : 0);
-  var mesesTxt = meses >= 12
-    ? Math.floor(meses/12) + ' año' + (Math.floor(meses/12)!==1?'s':'') +
-      (meses%12>0?' y '+meses%12+' mes'+(meses%12!==1?'es':''):'')
-    : meses + ' mes' + (meses!==1?'es':'');
-
-  return '<div class="tc-sim-res-row"><span class="tc-sim-res-lbl">Terminas en</span><span class="tc-sim-res-val">' + mesesTxt + '</span></div>' +
-    '<div class="tc-sim-res-row"><span class="tc-sim-res-lbl">Total a pagar</span><span class="tc-sim-res-val">' + fmx(totalPagado) + '</span></div>' +
-    '<div class="tc-sim-res-row"><span class="tc-sim-res-lbl">Intereses</span><span class="tc-sim-res-val">' + fmx(intereses) + '</span></div>' +
-    (ahorro > 0 ? '<div class="tc-sim-res-row"><span class="tc-sim-res-lbl">💚 Ahorras vs mínimo</span><span class="tc-sim-res-val ahorro">' + fmx(ahorro) + '</span></div>' : '');
+  return {meses: meses, total: r2(total), intereses: r2(total - saldo), largo: meses >= 600};
+}
+// "66 meses (5 años y 6 meses)" · "8 meses"
+function txtPlazoTC(m) {
+  var mm = function(n) { return n + ' mes' + (n !== 1 ? 'es' : ''); };
+  var a = Math.floor(m / 12), r = m % 12;
+  if (!a) return mm(m);
+  return mm(m) + ' (' + a + ' año' + (a !== 1 ? 's' : '') + (r ? ' y ' + mm(r) : '') + ')';
 }
 
-function actualizarSim(idx, saldo, tasa) {
+function buildSimRes(t, pago) {
+  if (!pago || pago <= 0) return '<div style="font-size:12px;color:#7D5F4E;text-align:center">Ingresa un monto</div>';
+  var tasa = t.tasa || 36, saldo = Math.max(0, Number(t.saldo) || 0);
+  var r = simPagoFijo(saldo, tasa, pago);
+  if (r.nunca) {
+    return '<div style="background:#FFF5F0;border-radius:8px;padding:10px 12px;border-left:4px solid #D9534F;font-size:12px;color:#9E5538;line-height:1.5"><div style="font-weight:700;margin-bottom:4px">\u26A0\uFE0F Tu deuda nunca baja</div><div>Con ' + fmx(pago) + ' al mes tu deuda nunca baja: el interés de este mes es ' + fmx(Math.round(r.interes)) + '.</div><div style="margin-top:4px;font-size:11px">\uD83D\uDC49 Aumenta tu pago.</div></div>';
+  }
+  if (r.largo) {
+    return '<div style="background:#FFF5F0;border-radius:8px;padding:10px 12px;border-left:4px solid #D9534F;font-size:12px;color:#9E5538;line-height:1.5"><div style="font-weight:700;margin-bottom:4px">⚠️ Plazo muy largo</div><div>Tardarías más de 50 años (600 meses) en pagar.</div><div style="margin-top:4px;font-size:11px">👉 Aumenta tu pago mensual para reducir plazos.</div></div>';
+  }
+  var min = minimoTC(saldo, tasa, t.limite);
+  var ahorro = r2(simSoloMinimo(saldo, tasa, t.limite).intereses - r.intereses);
+  return '<div class="tc-sim-res-row"><span class="tc-sim-res-lbl">Terminas en</span><span class="tc-sim-res-val">' + txtPlazoTC(r.meses) + '</span></div>' +
+    '<div class="tc-sim-res-row"><span class="tc-sim-res-lbl">Total a pagar</span><span class="tc-sim-res-val">' + fmx(r.total) + '</span></div>' +
+    '<div class="tc-sim-res-row"><span class="tc-sim-res-lbl">Intereses</span><span class="tc-sim-res-val">' + fmx(r.intereses) + '</span></div>' +
+    (ahorro > 0 ? '<div class="tc-sim-res-row"><span class="tc-sim-res-lbl">\uD83D\uDC9A Ahorras vs mínimo</span><span class="tc-sim-res-val ahorro">' + fmx(ahorro) + '</span></div>' : '') +
+    (pago < min ? '<div style="font-size:11px;color:#B5543C;margin-top:6px">Ojo: es menor al mínimo de este mes (' + fmx(min) + ').</div>' : '');
+}
+
+function actualizarSim(idx) {
   var inp = document.getElementById('sim-inp-' + idx);
   var res = document.getElementById('sim-res-' + idx);
-  if (!inp || !res) return;
-  var pago = r2(parseFloat(inp.value)) || 0;
   var t = getTarjetas()[idx];
-  var min = t ? (t.pagoMin || Math.max(200, Math.round(saldo * 0.015))) : 200;
-  var resultMin = calcMinimoVsTotal(saldo, tasa, min);
-  res.innerHTML = buildSimRes(saldo, tasa, pago, resultMin);
+  if (!inp || !res || !t) return;
+  res.innerHTML = buildSimRes(t, r2(parseFloat(inp.value)) || 0);
 }
 
 // ── TOGGLE TARJETA ────────────────────────────────
@@ -7101,56 +7094,7 @@ function dlgConfigTarjeta(banco) {
           btns: [
             {l: 'Siguiente →', c: 'p', f: function(v2) {
               tc.limite = r2(parseFloat(v2)) || 0;
-              dlg({
-                e: '📅', t: 'Fechas de tu tarjeta',
-                s: '¿Qué día del mes es tu CORTE? (cuando te mandan el estado de cuenta)',
-                inp: true, ph: 'Día de corte (ej: 15)', md: 'decimal',
-                btns: [
-                  {l: 'Siguiente →', c: 'p', f: function(v3) {
-                    tc.diaCorte = parseInt(v3) || 0;
-                    dlg({
-                      e: '📅', t: 'Fecha límite de pago',
-                      s: '¿Qué día del mes debes pagar como máximo para no tener recargos?',
-                      inp: true, ph: 'Día límite de pago (ej: 5)', md: 'decimal',
-                      btns: [
-                        {l: 'Siguiente →', c: 'p', f: function(v4) {
-                          tc.diaPago = parseInt(v4) || 0;
-                          dlg({
-                            e: '💪', t: '¿Eres totalera?',
-                            inf: 'Una TOTALERA paga el 100% de su tarjeta cada mes y nunca paga intereses.\n\n¿Puedes liquidar ' + fmx(tc.saldo) + ' antes del día ' + tc.diaPago + '?',
-                            btns: [
-                              {l: '💪 Sí, soy totalera', c: 'p', f: function() {
-                                tc.esTotalera = true;
-                                guardarTarjeta(tc);
-                              }},
-                              {l: 'No, pago en parcialidades', c: 's', f: function() {
-                                tc.esTotalera = false;
-                                dlg({
-                                  e: '💳', t: '¿Cuánto pagas al mes?',
-                                  s: 'El mínimo es ' + fmx(Math.max(200, Math.round(tc.saldo*0.015))) + ' — pero entre más pagues, menos intereses.',
-                                  inp: true, ph: '$ Pago mensual que harás', md: 'decimal',
-                                  btns: [
-                                    {l: 'Guardar tarjeta', c: 'p', f: function(v5) {
-                                      tc.pagoMin = r2(parseFloat(v5)) || Math.max(200, Math.round(tc.saldo*0.015));
-                                      guardarTarjeta(tc);
-                                    }},
-                                    {l: 'Usar pago mínimo', c: 's', f: function() {
-                                      tc.pagoMin = Math.max(200, Math.round(tc.saldo*0.015));
-                                      guardarTarjeta(tc);
-                                    }}
-                                  ]
-                                });
-                              }}
-                            ]
-                          });
-                        }},
-                        {l: 'Cancelar', c: 's', f: null}
-                      ]
-                    });
-                  }},
-                  {l: 'Cancelar', c: 's', f: null}
-                ]
-              });
+              pasoCorte();
             }},
             {l: 'Cancelar', c: 's', f: null}
           ]
@@ -7159,12 +7103,99 @@ function dlgConfigTarjeta(banco) {
       {l: 'Cancelar', c: 's', f: null}
     ]
   });
+  function pasoCorte() {
+    dlg({
+      e: '\uD83D\uDCC5', t: 'Fechas de tu tarjeta',
+      s: '¿Qué día del mes es tu CORTE? (cuando te mandan el estado de cuenta)',
+      inp: true, ph: 'Día de corte (ej: 15)', md: 'decimal',
+      btns: [
+        {l: 'Siguiente →', c: 'p', f: function(v3) {
+          var d = diaTC(v3);
+          if (!d) { toast('Escribe un día del 1 al 31'); pasoCorte(); return; }
+          tc.diaCorte = d;
+          pasoPago();
+        }},
+        {l: 'Cancelar', c: 's', f: null}
+      ]
+    });
+  }
+  function pasoPago() {
+    dlg({
+      e: '\uD83D\uDCC5', t: 'Fecha límite de pago',
+      s: '¿Qué día del mes debes pagar como máximo para no tener recargos?',
+      inp: true, ph: 'Día límite de pago (ej: 5)', md: 'decimal',
+      btns: [
+        {l: 'Siguiente →', c: 'p', f: function(v4) {
+          var d = diaTC(v4);
+          if (!d) { toast('Escribe un día del 1 al 31'); pasoPago(); return; }
+          tc.diaPago = d;
+          pasoTotalera();
+        }},
+        {l: 'Cancelar', c: 's', f: null}
+      ]
+    });
+  }
+  function pasoTotalera() {
+    dlg({
+      e: '\uD83D\uDCAA', t: '¿Eres totalera?',
+      inf: 'Una TOTALERA paga el 100% de su tarjeta cada mes y nunca paga intereses.\n\n¿Puedes liquidar ' + fmx(tc.saldo) + ' antes del día ' + tc.diaPago + '?',
+      btns: [
+        {l: '\uD83D\uDCAA Sí, soy totalera', c: 'p', f: function() {
+          tc.esTotalera = true;
+          guardarTarjeta(tc);
+        }},
+        {l: 'No, pago en parcialidades', c: 's', f: function() {
+          tc.esTotalera = false;
+          pasoPlan();
+        }},
+        {l: 'Cancelar', c: 's', f: null}
+      ]
+    });
+  }
+  function pasoPlan() {
+    var min = minimoTC(tc.saldo, tc.tasa, tc.limite);
+    var btns = [
+      {l: 'Guardar tarjeta', c: 'p', f: function(v5) {
+        var val = r2(parseFloat(v5));
+        if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); pasoPlan(); return; }
+        confirmarPlanTC(val, min, function(x) { tc.pagoPlan = x; guardarTarjeta(tc); }, pasoPlan);
+      }}
+    ];
+    if (min > 0) btns.push({l: 'Pagaré el mínimo (' + fmx(min) + ')', c: 's', f: function() { tc.pagoPlan = min; guardarTarjeta(tc); }});
+    btns.push({l: 'Cancelar', c: 's', f: null});
+    dlg({
+      e: '\uD83D\uDCB3', t: '¿Cuánto planeas pagar al mes?',
+      s: min > 0 ? 'El mínimo de este mes es ' + fmx(min) + ' — pero entre más pagues, menos intereses.' : 'Hoy no debes nada en esta tarjeta.',
+      inp: true, ph: '$ Lo que planeas pagar al mes', md: 'decimal',
+      btns: btns
+    });
+  }
+}
+
+// Día del mes válido (1-31) o 0.
+function diaTC(v) {
+  var d = Number(v);
+  return (d >= 1 && d <= 31 && Math.floor(d) === d) ? d : 0;
+}
+// Si lo que planeas pagar es menor al mínimo, avisa antes de guardar.
+function confirmarPlanTC(val, min, guardarFn, corregirFn) {
+  if (!min || val >= min) { guardarFn(val); return; }
+  dlg({
+    e: '\u26A0\uFE0F', t: 'Tu pago es menor al mínimo',
+    s: 'Tu pago es menor al mínimo de ' + fmx(min) + '. El banco te cobrará cargos y afecta tu historial.',
+    btns: [
+      {l: 'Usar el mínimo (' + fmx(min) + ')', c: 'p', f: function() { guardarFn(min); }},
+      {l: 'Guardar ' + fmx(val) + ' así', c: 's', f: function() { guardarFn(val); }},
+      {l: 'Corregir el monto', c: 's', f: corregirFn}
+    ]
+  });
 }
 
 function guardarTarjeta(tc) {
   if (!exigirEscritura()) return; // modo consulta
   tc.id = 'tc_' + Date.now();
   getTarjetas().push(tc);
+  normalizarTarjetas();
   guardar();
   abrirSobre('deudas');
   toast('Tarjeta ' + tc.nom + ' registrada 💳');
@@ -7245,7 +7276,7 @@ function dlgEditarTarjeta(idx) {
         if (!exigirEscritura()) return; // modo consulta
         dlg({
           e: t.ico, t: 'Tasa de interés de ' + t.nom,
-          s: 'La tasa de interés ordinaria (sin comisiones ni seguros) — se usa para calcular cuánto te cobran si no pagas todo. Revísala en tu estado de cuenta.',
+          s: 'La tasa de interés anual ordinaria (sin comisiones ni seguros). Con ella, y no con el CAT, se calculan tus intereses y tu pago mínimo. Revísala en tu estado de cuenta.',
           inp: true, ph: 'Tasa actual: ' + (t.tasa||36) + '%', md: 'decimal',
           btns: [
             {l: 'Guardar', c: 'p', f: function(v) {
@@ -7259,8 +7290,132 @@ function dlgEditarTarjeta(idx) {
           ]
         });
       }},
+      {l: '\uD83D\uDCDD Nombre, límite, fechas y pago', c: 's', f: function() {
+        dlgDatosTarjeta(idx);
+      }},
       {l: '📋 Ver pagos registrados', c: 's', f: function() {
         dlgHistorialPagos(idx);
+      }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]
+  });
+}
+
+function dlgDatosTarjeta(idx) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTarjetas()[idx];
+  if (!t) return;
+  var min = minimoDeTarjeta(t), plan = pagoPlanTC(t);
+  dlg({
+    e: t.ico, t: 'Datos de ' + t.nom,
+    inf: 'Nombre: ' + t.nom +
+      '\nLímite de crédito: ' + (t.limite ? fmx(t.limite) : 'sin registrar') +
+      '\nDía de corte: ' + (t.diaCorte || 'sin registrar') +
+      '\nDía límite de pago: ' + (t.diaPago || 'sin registrar') +
+      '\nLo que planeas pagar: ' + (plan ? fmx(plan) + ' al mes' : 'sin registrar') +
+      (min ? '\nMínimo de este mes: ' + fmx(min) : ''),
+    btns: [
+      {l: '\u270F\uFE0F Nombre', c: 's', f: function() { dlgTCNombre(idx); }},
+      {l: '\uD83D\uDCB3 Límite de crédito', c: 's', f: function() { dlgTCLimite(idx); }},
+      {l: '\uD83D\uDCC5 Día de corte', c: 's', f: function() { dlgTCDia(idx, 'diaCorte'); }},
+      {l: '\uD83D\uDCC5 Día límite de pago', c: 's', f: function() { dlgTCDia(idx, 'diaPago'); }},
+      {l: '\uD83D\uDCB0 Lo que planeas pagar', c: 's', f: function() { dlgTCPlan(idx); }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]
+  });
+}
+function dlgTCNombre(idx) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTarjetas()[idx];
+  if (!t) return;
+  dlg({
+    e: t.ico, t: 'Nombre de la tarjeta', inp: true, ph: 'Nombre (ej: BBVA Azul)', md: 'text', val: t.nom,
+    btns: [
+      {l: 'Guardar', c: 'p', f: function(v) {
+        var nom = (v || '').trim().slice(0, 40);
+        if (!nom) { toast('Escribe un nombre'); dlgTCNombre(idx); return; }
+        t.nom = nom;
+        guardar(); abrirSobre('deudas');
+        toast('Nombre cambiado a ' + nom + ' ✓');
+      }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]
+  });
+}
+function dlgTCLimite(idx) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTarjetas()[idx];
+  if (!t) return;
+  var guardarLim = function(val) {
+    t.limite = val;
+    guardar(); abrirSobre('deudas');
+    toast(val ? 'Límite actualizado a ' + fmx(val) + ' ✓' : 'Límite quitado ✓');
+  };
+  dlg({
+    e: t.ico, t: 'Límite de crédito de ' + t.nom, s: 'Escribe 0 si no quieres registrarlo.',
+    inp: true, ph: '$ Límite de crédito', md: 'decimal', val: t.limite || '',
+    btns: [
+      {l: 'Guardar', c: 'p', f: function(v) {
+        var val = v === '' ? 0 : r2(parseFloat(v));
+        if (isNaN(val) || val < 0) { toast('Ingresa un monto válido'); dlgTCLimite(idx); return; }
+        var saldo = r2(Number(t.saldo) || 0);
+        if (val > 0 && saldo > val) {
+          dlg({
+            e: '\u26A0\uFE0F', t: 'El límite queda abajo de tu saldo',
+            s: 'Tu saldo de ' + fmx(saldo) + ' ya pasa el límite de ' + fmx(val) + '.',
+            btns: [
+              {l: 'Guardar de todos modos', c: 'p', f: function() { guardarLim(val); }},
+              {l: 'Corregir el límite', c: 's', f: function() { dlgTCLimite(idx); }},
+              {l: 'Cancelar', c: 's', f: null}
+            ]
+          });
+          return;
+        }
+        guardarLim(val);
+      }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]
+  });
+}
+function dlgTCDia(idx, campo) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTarjetas()[idx];
+  if (!t) return;
+  var corte = campo === 'diaCorte';
+  dlg({
+    e: '\uD83D\uDCC5', t: (corte ? 'Día de corte de ' : 'Día límite de pago de ') + t.nom,
+    s: corte ? '¿Qué día del mes es tu CORTE? (cuando te mandan el estado de cuenta)' : '¿Qué día del mes debes pagar como máximo para no tener recargos?',
+    inp: true, ph: 'Día del 1 al 31', md: 'decimal', val: t[campo] || '',
+    btns: [
+      {l: 'Guardar', c: 'p', f: function(v) {
+        var d = diaTC(v);
+        if (!d) { toast('Escribe un día del 1 al 31'); dlgTCDia(idx, campo); return; }
+        t[campo] = d;
+        guardar(); abrirSobre('deudas'); actualizarUI();
+        toast((corte ? 'Día de corte: ' : 'Día límite de pago: ') + d + ' ✓');
+      }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]
+  });
+}
+function dlgTCPlan(idx) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTarjetas()[idx];
+  if (!t) return;
+  var min = minimoDeTarjeta(t);
+  dlg({
+    e: '\uD83D\uDCB0', t: '¿Cuánto planeas pagar al mes?',
+    s: min ? 'El mínimo de este mes es ' + fmx(min) + ' (regla de Banxico, sin tus MSI).' : 'Hoy no debes nada en esta tarjeta.',
+    inp: true, ph: '$ Lo que planeas pagar al mes', md: 'decimal', val: pagoPlanTC(t) || '',
+    btns: [
+      {l: 'Guardar', c: 'p', f: function(v) {
+        var val = r2(parseFloat(v));
+        if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); dlgTCPlan(idx); return; }
+        confirmarPlanTC(val, min, function(x) {
+          t.pagoPlan = x;
+          guardar(); abrirSobre('deudas');
+          toast('Lo que planeas pagar: ' + fmx(x) + ' al mes ✓');
+        }, function() { dlgTCPlan(idx); });
       }},
       {l: 'Cancelar', c: 's', f: null}
     ]
@@ -7350,7 +7505,8 @@ function dlgAbonarTarjetaMonto(idx, seleccion) {
   dlg({
     e: '💸', t: 'Registrar pago a ' + t.nom,
     inf: (t.saldo < 0 ? 'Saldo a favor: ' + fmx(-t.saldo) : 'Saldo actual (cargos regulares): ' + fmx(t.saldo)) +
-      '\nPago sugerido: ' + fmx(t.pagoMin || Math.max(200, Math.round(deuda * 0.015))) +
+      (deuda > 0 ? '\nMínimo de este mes: ' + fmx(minimoTC(deuda, t.tasa || 36, t.limite)) : '') +
+      (pagoPlanTC(t) ? '\nLo que planeas pagar: ' + fmx(pagoPlanTC(t)) : '') +
       (totalMSI > 0 ? '\nMensualidades MSI incluidas: ' + fmx(totalMSI) : ''),
     inp: true, ph: '$ ¿Cuánto pagaste EN TOTAL?', md: 'decimal',
     btns: [
@@ -7410,8 +7566,8 @@ function registrarPagoTarjeta(idx, rev, msis, val) {
   var antes = r2(Number(t.saldo) || 0);
   t.saldo = r2(antes - rev);
   if (t.saldo <= 0) t.esTotalera = true;
-  var pagoMinRef = t.pagoMin || Math.max(200, Math.round(Math.max(0, antes) * 0.015));
-  if (rev > pagoMinRef) E.pagoMayorMinimo = true;
+  var pagoMinRef = minimoTC(antes, t.tasa || 36, t.limite);
+  if (pagoMinRef > 0 && rev > pagoMinRef) E.pagoMayorMinimo = true;
   guardar();
   abrirSobre('deudas');
   actualizarUI();
@@ -7703,7 +7859,7 @@ function renderMSICard(m, i) {
   if (m.tarjetaId) {
     getTarjetas().forEach(function(t) { if (t.id === m.tarjetaId) tarjetaLigada = t; });
   }
-  var ligaTxt = tarjetaLigada ? ('🔗 ' + tarjetaLigada.ico + ' ' + tarjetaLigada.nom) : '⚠️ Sin vincular a tarjeta';
+  var ligaTxt = tarjetaLigada ? ('\uD83D\uDD17 ' + tarjetaLigada.ico + ' ' + escHtml(tarjetaLigada.nom)) : '\u26A0\uFE0F Sin vincular a tarjeta';
 
   return '<div class="msi-card">' +
     '<div class="msi-hdr" onclick="toggleMSI(' + i + ')">' +
