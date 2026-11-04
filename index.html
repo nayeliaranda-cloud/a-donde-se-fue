@@ -2022,7 +2022,7 @@ function actualizarUI() {
   var EA = entradaActual();
   st('d-ent', fmx(EA.entro));
   mostrarArrastre('d-arr', EA.arr, false);
-  mostrarLineaRetiro('d-ret', retU, cobU);
+  mostrarLineaRetiro('d-ret', retU, cobU, prestamosMes());
   var dDesg = document.getElementById('d-desg');
   if (dDesg) {
     var txtDesg = EA.desg, hayExt = gruposIngresoExtra().length > 0;
@@ -2032,7 +2032,7 @@ function actualizarUI() {
     dDesg.onclick = hayExt ? dlgIngresosExtra : null;
   }
   mostrarDirectoMetas('d-dmet', dmU);
-  st('d-sal', fmx(gasto));
+  st('d-sal', fmx(salioMes()));
   st('d-hoy', fmx(Math.floor(Math.max(0, disp / rest))));
   renderHeroSobres();
 
@@ -2084,7 +2084,7 @@ function actualizarUI() {
     if (sa <= -1) { ico = '\u26A0\uFE0F'; tit = 'Tus sobres suman ' + fmx(-sa) + ' más de lo que entró este mes'; sub = 'Ajusta tus límites'; ver = true; }
     else if (pendientesMes().length) {
       var pds = pendientesMes(), totP = r2(pds.reduce(function(t, x) { return t + x.mto; }, 0));
-      ico = '\uD83D\uDCB0'; tit = 'Tienes ' + fmx(totP) + ' sin asignar (' + (pds[0].tipo === 'retiro' ? 'retiro de ahorro' : pds[0].tipo === 'cobro' ? 'cobro de tanda' : 'ingreso extra') + ')';
+      ico = '\uD83D\uDCB0'; tit = 'Tienes ' + fmx(totP) + ' sin asignar (' + ({retiro: 'retiro de ahorro', cobro: 'cobro de tanda', prCobro: 'te pagaron un préstamo', prRecibido: 'te prestaron'}[pds[0].tipo] || 'ingreso extra') + ')';
       sub = '¿A qué sobre va este mes?'; ver = true; modo = 'pendiente';
     }
     else if (retiroArrastradoEfectivo() > 0) {
@@ -2430,7 +2430,7 @@ function abrirModalEdicionTransaccion(id) {
   if (!r) return;
   if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
   if (movDeFondo(r)) return;
-  if (movDeTarjeta(r, 'editar') || movDeMeta(r, 'editar') || movDeServicio(r, 'editar')) return;
+  if (movDePrestamo(r) || movDeTarjeta(r, 'editar') || movDeMeta(r, 'editar') || movDeServicio(r, 'editar')) return;
   dlg({
     e:'✏️', t:'Editar monto',
     inf: '📝 ' + (r.nota || 'Sin nota') + '\nMonto actual: ' + fmx(r.mto),
@@ -2473,7 +2473,7 @@ function dlgEliminarTransaccion(id) {
   if (!r) return;
   if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
   if (movDeFondo(r)) return;
-  if (movDeTarjeta(r, 'borrar') || movDeMeta(r, 'borrar') || movDeServicio(r, 'borrar')) return;
+  if (movDePrestamo(r) || movDeTarjeta(r, 'borrar') || movDeMeta(r, 'borrar') || movDeServicio(r, 'borrar')) return;
   dlg({
     e:'🗑', t:'Eliminar transacción',
     s:'¿Eliminar "' + (r.nota || 'esta transacción') + '" por ' + fmx(r.mto) + '? No se puede deshacer.',
@@ -4034,12 +4034,62 @@ function renderMetasRes() {
 // ════ PRÉSTAMOS ═══════════════════════════════════
 function getPr() { if(!E.pr)E.pr={me:[],yo:[]}; if(!E.pr.me)E.pr.me=[]; if(!E.pr.yo)E.pr.yo=[]; return E.pr; }
 
+// ── Préstamos con abonos (Bloque 10) ──
+// p = {id, q, mto (monto original), pa, fecha (texto), st:'pe'|'pa', movs:[{id, tipo:'inicio'|'abono', mto, fecha, periodo, regId, deshecho}]}
+// "me" = te deben · "yo" = tú debes. El dinero va fuera de Entró y de Salió, en su propio renglón:
+//   Prestaste (Resta) ............. {sobre:'extra', sub:'prPrestaste', mto:0, prestaste, prId}
+//   Te prestaron (Suma) ........... {sobre:'extra', sub:'prRecibido', mto:0, cobro, asignado, prId}
+//   Te pagaron un préstamo (Suma) . {sobre:'extra', sub:'prCobro', mto:0, cobro, asignado, aMeta, aAhorro, prId}
+//     lo que va a metas o Ahorro sale en "Del cobro a metas y ahorro" (Resta), el mismo renglón del cobro de tanda
+//   Pagaste un préstamo (Resta) ... gasto del sobre Deudas con origen {tipo:'prestamo', id}: cuenta en
+//     el sobre Deudas, pero en el Resumen va en su renglón, no dentro de Salió.
+// Si la usuaria elige "Solo anotarlo", no se mueve dinero (regId null).
+// Los préstamos viejos se quedan como estaban; los liquidados viejos, sin movimiento.
+// Préstamos de antes (sin id ni movs, formato anterior) se leen tal cual y no se migran:
+// el id se pone solo cuando un abono o un registro de dinero lo necesita.
+var prIdN = 0;
+function idPr(p) { if (!p.id) p.id = 'pr_' + Date.now() + '_' + (prIdN++); return p.id; }
+function prPorId(id) {
+  var pr = getPr(), res = null;
+  ['me', 'yo'].forEach(function(t) { pr[t].forEach(function(p, i) { if (p.id === id) res = {p: p, tipo: t, idx: i}; }); });
+  return res;
+}
+function abonadoPr(p) { return r2((p.movs || []).reduce(function(t, mv) { return t + (mv.tipo === 'abono' && !mv.deshecho ? Number(mv.mto) || 0 : 0); }, 0)); }
+function saldoPr(p) { return Math.max(0, r2((Number(p.mto) || 0) - abonadoPr(p))); }
+function esPagoPrestamo(r) { return !!(r.origen && r.origen.tipo === 'prestamo' && r.sobre !== 'extra'); }
+// prestaste · recibido (te prestaron) · cobro/guardado/ef (te pagaron) · pagaste
+function prestamosDe(regs) {
+  var o = {prestaste: 0, recibido: 0, cobro: 0, guardado: 0, ef: 0, pagaste: 0};
+  regs.forEach(function(r) {
+    if (r.sobre === 'extra' && r.sub === 'prPrestaste') o.prestaste += Number(r.prestaste) || 0;
+    else if (r.sobre === 'extra' && r.sub === 'prRecibido') o.recibido += Number(r.cobro) || 0;
+    else if (r.sobre === 'extra' && r.sub === 'prCobro') { o.cobro += Number(r.cobro) || 0; o.guardado += cobroGuardado(r); o.ef += cobroEfectivo(r); }
+    else if (esPagoPrestamo(r)) o.pagaste += Number(r.mto) || 0;
+  });
+  for (var k in o) o[k] = r2(o[k]);
+  return o;
+}
+function prestamosMes() { var p = periodoActual(); return prestamosDe(E.regs.filter(function(r) { return periodoDe(r) === p; })); }
+// Lo que los préstamos mueven el disponible (lo de "Pagaste" ya está en los gastos).
+function efectoPrestamos(o) { return r2(o.ef + o.recibido - o.prestaste); }
+// Salió del mes, sin los pagos de préstamos (van en su renglón).
+function salioMes() { return r2(calcGT() - prestamosMes().pagaste); }
+// Te prestaron, Prestaste y Pagaste (Te pagaron va junto al cobro de tanda, en mostrarLineaRetiro).
+function txtPrestamosLineas(o) {
+  if (!o) return '';
+  var t = [];
+  if (o.recibido > 0) t.push('\uD83D\uDCB8 Te prestaron +' + fmx(o.recibido));
+  if (o.prestaste > 0) t.push('\uD83D\uDCB8 Prestaste ' + fmx(-o.prestaste));
+  if (o.pagaste > 0) t.push('\uD83D\uDCB8 Pagaste un préstamo ' + fmx(-o.pagaste));
+  return t.join('\n');
+}
+
 function renderPrestamos(cont) {
   var pr=getPr();
-  var tdm=pr.me.filter(function(x){return x.st==='pe';}).reduce(function(s,x){return s+(Number(x.mto)||0);},0);
-  var tyd=pr.yo.filter(function(x){return x.st==='pe';}).reduce(function(s,x){return s+(Number(x.mto)||0);},0);
+  var tdm=r2(pr.me.filter(function(x){return x.st==='pe';}).reduce(function(s,x){return s+saldoPr(x);},0));
+  var tyd=r2(pr.yo.filter(function(x){return x.st==='pe';}).reduce(function(s,x){return s+saldoPr(x);},0));
   var html='<div style="background:#FAF6F0;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#6B4C3B;line-height:1.5;border-left:3px solid #7A9E7E">'+
-    '<strong>Aquí vive el dinero que circula entre tú y las personas de tu vida.</strong><br>Anotar es la diferencia entre un préstamo y un regalo sin querer 😊</div>';
+    '<strong>Aquí vive el dinero que circula entre tú y las personas de tu vida.</strong><br>Anota cada abono: así sabes cuánto falta y tu mes cuadra.</div>';
   html+='<div style="margin-bottom:14px">'+
     '<div class="pr-hdr me"><div><div style="font-size:9px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1px;margin-bottom:1px">📥 Me deben</div>'+
     '<div class="pr-ht">Lo que te deben a ti</div></div><div class="pr-hm">'+fmx(tdm)+'</div></div>';
@@ -4055,59 +4105,60 @@ function renderPrestamos(cont) {
 }
 
 function itmPr(p,i,tipo) {
-  var esMe=tipo==='me';var pe=p.st==='pe';
+  var esMe=tipo==='me', pe=p.st==='pe', ab=abonadoPr(p), sal=saldoPr(p);
   var ini=(p.q||'?')[0].toUpperCase();
-  return '<div class="pr-it"><div class="pr-av '+(esMe?'v':'t')+'">'+ini+'</div>'+
-    '<div class="pr-d"><div class="pr-q">'+escHtml(p.q)+'</div><div class="pr-p">'+escHtml(p.pa||'Sin descripción')+'</div><div style="font-size:10px;color:#7D5F4E">📅 '+(p.fecha||'')+'</div></div>'+
-    '<div class="pr-dr"><div class="pr-m '+(esMe?'v':'r')+'">'+fmx(p.mto)+'</div>'+
-    '<div class="pr-st '+(pe?'pe':'pa')+'">'+(pe?'⏳ Pendiente':'✅ Liquidado')+'</div>'+
+  var estado = pe ? (ab > 0 ? (esMe ? 'Te debe ' : 'Debes ') + fmx(sal) + ' de ' + fmx(p.mto) : '\u23F3 Pendiente') : '\u2705 Liquidado';
+  return '<div class="pr-it" onclick="dlgDetallePr(\''+tipo+'\','+i+')" style="cursor:pointer"><div class="pr-av '+(esMe?'v':'t')+'">'+escHtml(ini)+'</div>'+
+    '<div class="pr-d"><div class="pr-q">'+escHtml(p.q)+'</div><div class="pr-p">'+escHtml(p.pa||'Sin descripción')+'</div><div style="font-size:10px;color:#7D5F4E">\uD83D\uDCC5 '+escHtml(p.fecha||'')+'</div></div>'+
+    '<div class="pr-dr"><div class="pr-m '+(esMe?'v':'r')+'">'+fmx(pe ? sal : p.mto)+'</div>'+
+    '<div class="pr-st '+(pe?'pe':'pa')+'">'+estado+'</div>'+
     '<div style="display:flex;gap:4px;margin-top:3px;justify-content:flex-end;flex-wrap:wrap">'+
-    (pe?'<button class="btn-marc '+(esMe?'c':'pg')+'" onclick="marcarPr(\''+tipo+'\','+i+')">'+(esMe?'✓ Ya cobré':'✓ Ya pagué')+'</button>':'')+
-    '<button class="btn-marc" style="border-color:#7D5F4E;color:#6B4C3B" onclick="dlgEditarPr(\''+tipo+'\','+i+')">✏️ Editar</button>'+
-    '<button class="btn-marc" style="border-color:#D9534F;color:#D9534F" onclick="dlgEliminarPr(\''+tipo+'\','+i+')">🗑</button>'+
+    (pe?'<button class="btn-marc '+(esMe?'c':'pg')+'" onclick="event.stopPropagation();dlgAbonoPr(\''+tipo+'\','+i+')">'+(esMe?'+ Me pagó':'+ Pagué')+'</button>':'')+
+    '<button class="btn-marc" style="border-color:#7D5F4E;color:#6B4C3B" onclick="event.stopPropagation();dlgDetallePr(\''+tipo+'\','+i+')">Ver</button>'+
     '</div>'+
     '</div></div>';
 }
 
-function dlgEditarPr(tipo, idx) {
-  if (!exigirEscritura()) return; // modo consulta
-  var pr = getPr(); var lista = tipo==='me'?'me':'yo'; var p = pr[lista][idx];
+// Detalle: historial (préstamo y abonos) con lo que movió dinero, y las acciones.
+function txtMovPr(mv, esMe) {
+  var lbl = mv.tipo === 'inicio' ? (esMe ? 'Le prestaste' : 'Te prestó') : (esMe ? 'Te pagó' : 'Pagaste');
+  var din = mv.regId ? '' : ' (solo anotado)';
+  return (mv.fecha ? fechaCorta(mv.fecha) : 'Antes') + ' · ' + lbl + ' ' + fmx(mv.mto) + din + (mv.deshecho ? ' · \u21A9 deshecho' : '');
+}
+function dlgDetallePr(tipo, idx) {
+  var p = getPr()[tipo][idx];
   if (!p) return;
-  dlg({
-    e:'✏️', t:'Corregir monto',
-    inf: '👤 ' + p.q + '\n📝 ' + (p.pa||'Sin descripción') + '\nMonto actual: ' + fmx(p.mto),
-    inp:true, ph:'Nuevo monto', md:'decimal',
-    btns:[
-      {l:'Guardar', c:'p', f:function(v){
-        var val = r2(parseFloat(v));
-        if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); return; }
-        getPr()[lista][idx].mto = val;
-        guardar(); abrirSobre('prestamos');
-        toast('Monto corregido a ' + fmx(val) + ' ✓');
-      }},
-      {l:'Cancelar', c:'s', f:null}
-    ]
-  });
+  var esMe = tipo === 'me', pe = p.st === 'pe';
+  var movs = (p.movs || []).slice().reverse();
+  var tieneAbonos = (p.movs || []).some(function(mv) { return mv.tipo === 'abono' && !mv.deshecho; });
+  var btns = [];
+  if (pe) btns.push({l: esMe ? '+ Me pagó' : '+ Pagué', c: 'p', f: function() { dlgAbonoPr(tipo, idx); }});
+  if (tieneAbonos) btns.push({l: 'Deshacer el último abono', c: 's', f: function() { dlgDeshacerAbonoPr(tipo, idx); }});
+  if (!pe && !tieneAbonos) btns.push({l: 'Regresar a pendiente', c: 's', f: function() { regresarPendientePr(tipo, idx); }});
+  btns.push({l: '\u270F\uFE0F Editar', c: 's', f: function() { dlgEditarPr(tipo, idx); }});
+  btns.push({l: '\uD83D\uDDD1 Eliminar', c: 'd', f: function() { dlgEliminarPr(tipo, idx); }});
+  btns.push({l: 'Cerrar', c: 's', f: null});
+  dlg({e: esMe ? '\uD83D\uDCE5' : '\uD83D\uDCE4', t: p.q,
+    s: (p.pa || 'Sin descripción') + ' · ' + (pe ? (esMe ? 'Te debe ' : 'Debes ') + fmx(saldoPr(p)) + ' de ' + fmx(p.mto) : 'Liquidado'),
+    inf: movs.length ? movs.map(function(mv) { return txtMovPr(mv, esMe); }).join('\n') : 'Registrado antes de que la app guardara los abonos.',
+    btns: btns});
 }
 
-function dlgEliminarPr(tipo, idx) {
-  if (!exigirEscritura()) return; // modo consulta
-  var pr = getPr(); var lista = tipo==='me'?'me':'yo'; var p = pr[lista][idx];
-  if (!p) return;
-  dlg({
-    e:'🗑', t:'Eliminar registro',
-    s:'¿Eliminar el registro de ' + p.q + ' por ' + fmx(p.mto) + '? No se puede deshacer.',
-    btns:[
-      {l:'Sí, eliminar', c:'d', f:function(){
-        getPr()[lista].splice(idx,1);
-        guardar(); abrirSobre('prestamos');
-        toast('Registro eliminado');
-      }},
-      {l:'Cancelar', c:'s', f:null}
-    ]
-  });
+function nuevoMovPr(p, tipo, mto, regId) {
+  var t = Date.now();
+  idPr(p);
+  var mv = {id: 'pm_' + t + '_' + (p.movs || []).length, tipo: tipo, mto: r2(mto), fecha: new Date().toISOString(), periodo: periodoActual(), regId: regId || null};
+  if (!p.movs) p.movs = [];
+  p.movs.push(mv);
+  return mv;
 }
-
+function nuevoRegPr(campos, p, nota) {
+  var r = {id: idRegNuevo(), sobre: 'extra', mto: 0, prId: idPr(p), nota: nota, periodo: periodoActual(), fecha: new Date().toISOString()};
+  for (var k in campos) r[k] = campos[k];
+  E.regs.push(r);
+  return r;
+}
+// Alta: quién, cuánto, para qué y si movió dinero de este mes.
 function dlgNuevoPr(tipo) {
   if (!exigirEscritura()) return; // modo consulta
   var esMe=tipo==='me'; var q='',mto=0;
@@ -4124,15 +4175,7 @@ function dlgNuevoPr(tipo) {
               var val=r2(parseFloat(v2));if(isNaN(val)||val<=0){toast('Ingresa un monto válido');return;}mto=val;
               dlg({e:'📝',t:'¿Para qué fue?',s:'Descripción breve (opcional)',inp:true,ph:'Ej: Medicamentos, Renta, Emergencia…',md:'text',
                 btns:[
-                  {l:'Guardar',c:'p',f:function(v3){
-                    var pr=getPr();
-                    var hoy=new Date();
-                    var meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-                    var f=hoy.getDate()+' de '+meses[hoy.getMonth()];
-                    pr[tipo==='me'?'me':'yo'].push({q:q,mto:mto,pa:v3.trim()||'Sin descripción',fecha:f,st:'pe'});
-                    guardar();abrirSobre('prestamos');
-                    toast(esMe?q+' te debe '+fmx(mto)+' registrado ✓':'Deuda con '+q+' registrada ✓');
-                  }},
+                  {l:'Siguiente →',c:'p',f:function(v3){ preguntarDineroPr(tipo, q, mto, v3.trim()||'Sin descripción'); }},
                   {l:'Cancelar',c:'s',f:null}
                 ]
               });
@@ -4145,20 +4188,242 @@ function dlgNuevoPr(tipo) {
     ]
   });
 }
+function preguntarDineroPr(tipo, q, mto, pa) {
+  var esMe = tipo === 'me';
+  var guardarPr = function(conDinero) {
+    var pr = getPr(), hoy = new Date();
+    var p = {id: 'pr_' + Date.now(), q: q, mto: mto, pa: pa, fecha: hoy.getDate() + ' de ' + MESES_NOM[hoy.getMonth()], st: 'pe', movs: []};
+    pr[tipo].push(p);
+    var r = null;
+    if (conDinero) {
+      r = esMe ? nuevoRegPr({sub: 'prPrestaste', prestaste: mto}, p, 'Prestaste a ' + q)
+        : nuevoRegPr({sub: 'prRecibido', cobro: mto, asignado: {}, aMeta: {}, aAhorro: 0}, p, 'Te prestó ' + q);
+    }
+    nuevoMovPr(p, 'inicio', mto, r ? r.id : null);
+    guardar(); abrirSobre('prestamos'); actualizarUI();
+    if (r && !esMe) {
+      // Lo que te prestaron sube tu disponible: se reparte como un ingreso más.
+      dlgRepartirSobres({r: r, tipo: 'prRecibido', mto: mto}, '¿A qué sobre va lo que te prestaron?', function() { cerrarDlg(); actualizarUI(); renderSobres(); abrirSobre('prestamos'); });
+      return;
+    }
+    toast(esMe ? q + ' te debe ' + fmx(mto) + (r ? ' · Prestaste ' + fmx(mto) + ' de este mes' : ' (solo anotado)')
+      : 'Le debes ' + fmx(mto) + ' a ' + q + ' (solo anotado)');
+  };
+  dlg({e: esMe ? '\uD83D\uDCB8' : '\uD83D\uDCB5', t: esMe ? '¿Salió de tu dinero de este mes?' : '¿Te dieron el dinero este mes?',
+    inf: esMe ? 'Si dices que sí, baja tu disponible y va en su propio renglón "Prestaste" (no cuenta como gasto). Si no, solo se anota.'
+      : 'Si dices que sí, sube tu disponible y va en su propio renglón "Te prestaron" (no cuenta como ingreso). Si no, solo se anota.',
+    btns: [
+      {l: esMe ? 'Sí, salió de este mes' : 'Sí, me lo dieron este mes', c: 'p', f: function() { guardarPr(true); }},
+      {l: 'No, solo anotarlo', c: 's', f: function() { guardarPr(false); }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]});
+}
 
-function marcarPr(tipo,idx) {
+// Abono: te pagaron (a dónde va el dinero) o pagaste (del sobre Deudas).
+function dlgAbonoPr(tipo, idx) {
   if (!exigirEscritura()) return; // modo consulta
-  var pr=getPr();var lista=tipo==='me'?'me':'yo';var p=pr[lista][idx];if(!p)return;
-  var esMe=tipo==='me';
-  dlg({e:'✅',t:esMe?'¿Ya cobré?':'¿Ya pagué?',inf:'👤 '+p.q+'\n💰 '+fmx(p.mto)+'\n📝 '+p.pa,
-    btns:[
-      {l:esMe?'Sí, ya cobré ✓':'Sí, ya pagué ✓',c:'p',f:function(){
-        pr[lista][idx].st='pa';guardar();abrirSobre('prestamos');
-        toast(esMe?'¡Cobrado! 💚':'¡Pagado! ✓');
+  var p = getPr()[tipo][idx];
+  if (!p || p.st !== 'pe') return;
+  var esMe = tipo === 'me', sal = saldoPr(p);
+  dlg({e: '\uD83D\uDCB5', t: esMe ? '¿Cuánto te pagó ' + p.q + '?' : '¿Cuánto le pagaste a ' + p.q + '?',
+    s: (esMe ? 'Te debe ' : 'Le debes ') + fmx(sal) + ' de ' + fmx(p.mto) + '.', inp: true, ph: '$ Monto', md: 'decimal', val: sal,
+    btns: [
+      {l: 'Siguiente →', c: 'p', f: function(v) {
+        var x = r2(parseFloat(v));
+        if (!(x > 0) || x > sal) { toast('Escribe un monto entre $0.01 y ' + fmx(sal)); return; }
+        if (esMe) dlgDestinoAbonoPr(p, x); else dlgPagoAbonoPr(p, x);
       }},
-      {l:'Cancelar',c:'s',f:null}
+      {l: 'Cancelar', c: 's', f: null}
+    ]});
+}
+function cerrarAbonoPr(p, x, regId) {
+  nuevoMovPr(p, 'abono', x, regId);
+  if (saldoPr(p) <= 0) p.st = 'pa';
+  guardar(); abrirSobre('prestamos'); actualizarUI();
+}
+function dlgDestinoAbonoPr(p, x) {
+  var crear = function() {
+    var c = nuevoRegPr({sub: 'prCobro', cobro: x, asignado: {}, aMeta: {}, aAhorro: 0}, p, 'Te pagó ' + p.q);
+    cerrarAbonoPr(p, x, c.id);
+    return c;
+  };
+  var fin = function() { cerrarDlg(); actualizarUI(); renderSobres(); abrirSobre('prestamos'); };
+  var btns = [{l: '\uD83D\uDED2 Gastarlo este mes', c: 'p', f: function() {
+    var c = crear();
+    dlgRepartirSobres({r: c, tipo: 'prCobro', mto: cobroPendiente(c)}, '¿A qué sobre va este mes?', fin);
+  }}];
+  if (getMetas().length) btns.push({l: '\uD83C\uDFAF A una meta', c: 's', f: function() {
+    var c = crear();
+    dlgCobroAMeta(c, function() {
+      var pd = {r: c, tipo: 'prCobro', mto: cobroPendiente(c)};
+      if (pd.mto > 0) dlgRepartirSobres(pd, '¿A qué sobre va lo demás?', fin); else fin();
+    });
+  }});
+  btns.push({l: '\uD83D\uDCB0 A mi sobre de Ahorro', c: 's', f: function() {
+    var c = crear();
+    c.aAhorro = x;
+    guardar(); fin();
+    toast(fmx(x) + ' de lo que te pagó ' + p.q + ' pasaron a tu sobre de Ahorro');
+  }});
+  btns.push({l: 'Solo anotarlo', c: 's', f: function() { cerrarAbonoPr(p, x, null); toast('Abono de ' + fmx(x) + ' anotado (sin mover dinero)'); }});
+  btns.push({l: 'Cancelar', c: 's', f: null});
+  dlg({e: '\uD83C\uDF89', t: '¿Qué hago con lo que te pagaron?',
+    s: fmx(x) + ' de ' + p.q + '. No cuenta como ingreso: va en su propio renglón "Te pagaron un préstamo". Lo que no repartas queda sin asignar.', btns: btns});
+}
+function dlgPagoAbonoPr(p, x) {
+  dlg({e: '\uD83D\uDCB8', t: '¿Cómo lo registro?',
+    s: 'Pagaste ' + fmx(x) + ' a ' + p.q + '. Sale de tu sobre Deudas y en tu resumen va en su renglón "Pagaste un préstamo" (no dentro de Salió).',
+    btns: [
+      {l: 'Del sobre Deudas', c: 'p', f: function() {
+        var r = {id: idRegNuevo(), sobre: 'deudas', sub: 'familiar', mto: x, nota: 'Pago de préstamo: ' + p.q, periodo: periodoActual(),
+          fecha: new Date().toISOString(), origen: {tipo: 'prestamo', id: idPr(p)}};
+        E.regs.push(r);
+        cerrarAbonoPr(p, x, r.id);
+        toast('Pagaste ' + fmx(x) + ' a ' + p.q + (p.st === 'pa' ? ' · ¡Liquidado!' : ' · Debes ' + fmx(saldoPr(p))));
+      }},
+      {l: 'Solo anotarlo', c: 's', f: function() { cerrarAbonoPr(p, x, null); toast('Pago de ' + fmx(x) + ' anotado (sin mover dinero)'); }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]});
+}
+
+// Deshacer el último abono: regresa el dinero a donde estaba (mes abierto).
+function quitarRegPr(r) {
+  if (!r) return;
+  if (!E.limsExtraMes) E.limsExtraMes = {};
+  for (var s in (r.asignado || {})) E.limsExtraMes[s] = r2((E.limsExtraMes[s] || 0) - r.asignado[s]);
+  for (var k in (r.aMeta || {})) {
+    var m = metaPorId(k);
+    if (!m) continue;
+    m.actual = r2((Number(m.actual) || 0) - r.aMeta[k]);
+    (m.movs || []).forEach(function(mv) { if (mv.tipo === 'prestamo' && mv.regId === r.id) mv.deshecho = new Date().toISOString(); });
+  }
+  E.regs = E.regs.filter(function(x) { return x !== r; });
+}
+// ¿Se puede quitar el dinero de este registro? (metas y sobre de Ahorro con saldo)
+function noAlcanzaRegPr(r, que) {
+  if (!r) return false;
+  for (var k in (r.aMeta || {})) {
+    var m = metaPorId(k), x = r.aMeta[k];
+    if (m && (Number(m.actual) || 0) < x) { avisoNoAlcanzaMeta(m, 'No puedes deshacer ' + que, r2(x - (Number(m.actual) || 0)), ''); return true; }
+  }
+  var enAh = saldoSobreAhorro();
+  if (r.aAhorro > 0 && enAh < r.aAhorro) {
+    dlg({e: '\u26A0\uFE0F', t: 'No alcanza', s: 'No puedes deshacer ' + que + ', porque mandaste ' + fmx(r.aAhorro) + ' a tu sobre de Ahorro y solo le quedan ' + fmx(enAh) +
+      '. Primero regresa ' + fmx(r2(r.aAhorro - enAh)) + ' a tu sobre de Ahorro.', btns: [{l: 'Entendido', c: 'p', f: null}]});
+    return true;
+  }
+  return false;
+}
+function dlgDeshacerAbonoPr(tipo, idx) {
+  if (!exigirEscritura()) return; // modo consulta
+  var p = getPr()[tipo][idx];
+  if (!p) return;
+  var mv = null;
+  (p.movs || []).forEach(function(x) { if (x.tipo === 'abono' && !x.deshecho) mv = x; });
+  if (!mv) return;
+  if (mesEstaCerrado(mv.periodo)) { avisoMesCerrado(mv.periodo); return; }
+  var r = mv.regId ? regPorId(mv.regId) : null, esMe = tipo === 'me';
+  var que = 'este abono de ' + fmx(mv.mto);
+  if (noAlcanzaRegPr(r, que)) return;
+  var lin = [txtMovPr(mv, esMe)];
+  if (r && r.sub === 'prCobro') {
+    var partes = [];
+    for (var s1 in (r.asignado || {})) if (r.asignado[s1] > 0) partes.push(nombreSobreId(s1) + ' ' + fmx(-r.asignado[s1]));
+    for (var m1 in (r.aMeta || {})) { var mm = metaPorId(m1); if (r.aMeta[m1] > 0) partes.push((mm ? mm.nom : 'Meta') + ' ' + fmx(-r.aMeta[m1])); }
+    if (r.aAhorro > 0) partes.push('Sobre de Ahorro ' + fmx(-r.aAhorro));
+    lin.push('Te pagaron un préstamo: ' + fmx(r.cobro) + (partes.length ? ' (' + partes.join(' · ') + ')' : ''));
+  } else if (r) lin.push('Pagaste un préstamo: ' + fmx(r.mto) + ' (sale de Deudas)');
+  lin.push((esMe ? 'Te debe: ' : 'Debes: ') + fmx(saldoPr(p)) + ' → ' + fmx(r2(saldoPr(p) + mv.mto)));
+  dlg({e: '\u21A9\uFE0F', t: '¿Deshacer el último abono?', inf: lin.join('\n'),
+    btns: [{l: 'Sí, deshacer', c: 'd', f: function() {
+      quitarRegPr(r);
+      mv.deshecho = new Date().toISOString();
+      p.st = 'pe';
+      guardar(); abrirSobre('prestamos'); actualizarUI(); renderMetas();
+      toast('Abono deshecho · ' + (esMe ? 'Te debe ' : 'Debes ') + fmx(saldoPr(p)));
+    }}, {l: 'Cancelar', c: 's', f: null}]});
+}
+// Liquidado sin abonos (registros viejos o "Ya cobré" de antes): vuelve a pendiente.
+function regresarPendientePr(tipo, idx) {
+  if (!exigirEscritura()) return; // modo consulta
+  var p = getPr()[tipo][idx];
+  if (!p) return;
+  p.st = 'pe';
+  guardar(); abrirSobre('prestamos');
+  toast(p.q + ': otra vez pendiente (' + fmx(saldoPr(p)) + ')');
+}
+
+function dlgEditarPr(tipo, idx) {
+  if (!exigirEscritura()) return; // modo consulta
+  var p = getPr()[tipo][idx];
+  if (!p) return;
+  var tieneAbonos = (p.movs || []).some(function(mv) { return mv.tipo === 'abono' && !mv.deshecho; });
+  var ini = (p.movs || []).filter(function(mv) { return mv.tipo === 'inicio'; })[0];
+  var campo = function(t, ph, val, guardarFn) {
+    dlg({e: '\u270F\uFE0F', t: t, inp: true, ph: ph, md: 'text', val: val,
+      btns: [{l: 'Guardar', c: 'p', f: function(v) { if (!v.trim()) { toast('Escribe algo'); return; } guardarFn(v.trim()); guardar(); abrirSobre('prestamos'); toast('Guardado ✓'); }},
+        {l: 'Cancelar', c: 's', f: null}]});
+  };
+  var btns = [
+    {l: 'Nombre: ' + p.q, c: 's', f: function() { campo('Nombre', 'Nombre', p.q, function(v) { p.q = v; }); }},
+    {l: 'Descripción: ' + (p.pa || 'Sin descripción'), c: 's', f: function() { campo('Descripción', '¿Para qué fue?', p.pa || '', function(v) { p.pa = v; }); }},
+    {l: 'Monto: ' + fmx(p.mto), c: 's', f: function() {
+      if (tieneAbonos) { toast('Ya tiene abonos: para cambiar el monto, primero deshaz los abonos'); return; }
+      if (ini && ini.regId && mesEstaCerrado(ini.periodo)) { avisoMesCerrado(ini.periodo); return; }
+      dlg({e: '\u270F\uFE0F', t: 'Corregir monto', inf: '\uD83D\uDC64 ' + p.q + '\nMonto actual: ' + fmx(p.mto), inp: true, ph: 'Nuevo monto', md: 'decimal', val: p.mto,
+        btns: [{l: 'Guardar', c: 'p', f: function(v) {
+          var val = r2(parseFloat(v));
+          if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); return; }
+          var r = ini && ini.regId ? regPorId(ini.regId) : null;
+          if (r && r.sub === 'prRecibido' && sumaObj(r.asignado) > val) { toast('Ya repartiste ' + fmx(sumaObj(r.asignado)) + ' de lo que te prestaron'); return; }
+          if (r && r.sub === 'prPrestaste') r.prestaste = val;
+          if (r && r.sub === 'prRecibido') r.cobro = val;
+          if (ini) ini.mto = val;
+          p.mto = val;
+          guardar(); abrirSobre('prestamos'); actualizarUI();
+          toast('Monto corregido a ' + fmx(val) + ' ✓');
+        }}, {l: 'Cancelar', c: 's', f: null}]});
+    }},
+    {l: 'Cancelar', c: 's', f: null}
+  ];
+  dlg({e: '\u270F\uFE0F', t: '¿Qué corrijo?', s: p.q + ' · ' + (p.pa || 'Sin descripción'), btns: btns});
+}
+
+// Eliminar: deshace el dinero de este mes; si algo es de un mes cerrado, no se borra.
+function dlgEliminarPr(tipo, idx) {
+  if (!exigirEscritura()) return; // modo consulta
+  var p = getPr()[tipo][idx];
+  if (!p) return;
+  var conDinero = (p.movs || []).filter(function(mv) { return mv.regId && !mv.deshecho; });
+  var cerrado = conDinero.filter(function(mv) { return mesEstaCerrado(mv.periodo); })[0];
+  if (cerrado) {
+    dlg({e: '\uD83D\uDD12', t: 'No se puede eliminar', s: 'Este préstamo movió dinero en ' + MESES_NOM[ymNum(cerrado.periodo) % 12] +
+      ', que ya está cerrado. Si ya quedó saldado, regístralo como abono.', btns: [{l: 'Entendido', c: 'p', f: null}]});
+    return;
+  }
+  var regs = conDinero.map(function(mv) { return regPorId(mv.regId); }).filter(function(r) { return r; });
+  for (var i = 0; i < regs.length; i++) if (noAlcanzaRegPr(regs[i], 'este préstamo')) return;
+  dlg({e: '\uD83D\uDDD1', t: 'Eliminar registro',
+    s: '¿Eliminar el registro de ' + p.q + ' por ' + fmx(p.mto) + '?' + (regs.length ? ' También se deshace el dinero que movió este mes.' : '') + ' No se puede deshacer.',
+    btns: [
+      {l: 'Sí, eliminar', c: 'd', f: function() {
+        regs.forEach(quitarRegPr);
+        getPr()[tipo].splice(idx, 1);
+        guardar(); abrirSobre('prestamos'); actualizarUI(); renderMetas();
+        toast('Registro eliminado');
+      }},
+      {l: 'Cancelar', c: 's', f: null}
     ]
   });
+}
+// Ver transacciones: los pagos de préstamo se manejan desde Préstamos.
+function movDePrestamo(r) {
+  if (!esPagoPrestamo(r)) return false;
+  var x = prPorId(r.origen.id);
+  dlg({e: '\uD83D\uDD12', t: 'Se maneja desde Préstamos', s: 'Este gasto es un pago de préstamo' + (x ? ' a ' + x.p.q : '') + '. Para cambiarlo usa "Deshacer el último abono" en Préstamos.',
+    btns: [x ? {l: 'Ir a Préstamos', c: 'p', f: function() { abrirSobre('prestamos'); setTimeout(function() { dlgDetallePr(x.tipo, x.idx); }, 50); }} : {l: 'Entendido', c: 'p', f: null},
+      {l: 'Cerrar', c: 's', f: null}]});
+  return true;
 }
 
 // ════ TANDA ═══════════════════════════════════════
@@ -4348,7 +4613,7 @@ function cobroAMeta(c, m, x) {
   var id = metaId(m);
   c.aMeta[id] = r2((c.aMeta[id] || 0) + x);
   m.actual = r2((Number(m.actual) || 0) + x);
-  movMeta(m, 'tanda', x, {regId:c.id});
+  movMeta(m, c.sub === 'prCobro' ? 'prestamo' : 'tanda', x, {regId:c.id});
 }
 function dlgDestinoCobro(c) {
   var pd = {r:c, tipo:'cobro', mto:cobroPendiente(c)};
@@ -4631,11 +4896,11 @@ function renderReportes() {
   var dmR = esSem ? 0 : directoMetasMes(), retR = esSem ? 0 : retirosMes(), cobR = esSem ? null : cobrosMes();
   st('r-ent', fmx(esSem ? mto : entradaActual().entro));
   mostrarArrastre('r-arr', esSem ? null : entradaActual().arr, true);
-  mostrarLineaRetiro('r-ret', retR, cobR);
+  mostrarLineaRetiro('r-ret', retR, cobR, esSem ? null : prestamosMes());
   mostrarDirectoMetas('r-dmet', dmR);
   if (rDesg && !esSem && gruposIngresoExtra().length) { rDesg.textContent += ' ›'; rDesg.style.cursor = 'pointer'; rDesg.onclick = dlgIngresosExtra; }
   else if (rDesg) { rDesg.style.cursor = ''; rDesg.onclick = null; }
-  st('r-sal', fmx(gasto));
+  st('r-sal', fmx(esSem ? gasto : salioMes()));
   st('r-dif', fmx(dif));
   st('r-mg', mg + '%');
 
@@ -5596,9 +5861,9 @@ function prepararCierre() {
   var EC = entradaActual();
   st('cierre-entro', fmx(EC.entro));
   mostrarArrastre('cierre-arr', EC.arr, true);
-  mostrarLineaRetiro('cierre-ret', retC, cobC);
+  mostrarLineaRetiro('cierre-ret', retC, cobC, prestamosMes());
   mostrarDirectoMetas('cierre-dmet', dmC);
-  st('cierre-salio', fmx(gasto));
+  st('cierre-salio', fmx(salioMes()));
   var cDesg = document.getElementById('cierre-desg');
   if (cDesg) { var txtC = EC.desg; cDesg.textContent = txtC ? 'Entró: ' + txtC : ''; cDesg.style.display = txtC ? 'block' : 'none'; }
   var cAh = document.getElementById('cierre-ahorro');
@@ -5735,6 +6000,8 @@ function archivarMes(mesIdx, anio, mto) {
   if (retA > 0) snapshot.retiros = retA;
   var cobA = cobrosDe(regsDeMes(mesIdx, anio));
   if (cobA.tot > 0) { snapshot.cobros = cobA.tot; if (cobA.guardado > 0) snapshot.cobrosGuardado = cobA.guardado; }
+  var prA = prestamosDe(regsDeMes(mesIdx, anio));
+  ponerPrestamos(snapshot, prA);
   if (ah.usado > 0) { snapshot.usado = ah.usado; snapshot.neto = ah.neto; }
   var prov = provisionesMes(regsDeMes(mesIdx, anio), ym);
   if (txtProvisiones(prov)) snapshot.provisiones = prov;
@@ -5747,7 +6014,7 @@ function archivarMes(mesIdx, anio, mto) {
   snapshot.det = detalleMes(regsDeMes(mesIdx, anio), ym);
   // Desglose de "Entró" (los callers archivan antes de limpiar arrastre y extra)
   var dIng = Number(E.perfil.mto) || 0, dArr = Number(E.saldoArrastrado) || 0, dExt = Number(E.ingresoExtraMes) || 0;
-  if (r2(dIng + dArr + dExt) === r2(mto - retA - cobA.ef)) { snapshot.ing = dIng; snapshot.arr = dArr; snapshot.ext = dExt; }
+  if (r2(dIng + dArr + dExt) === r2(mto - retA - cobA.ef - efectoPrestamos(prA))) { snapshot.ing = dIng; snapshot.arr = dArr; snapshot.ext = dExt; }
   snapshot.det.ing = r2(dIng); snapshot.det.arr = r2(dArr); snapshot.det.ext = r2(dExt); snapshot.det.directo = dmA;
   ahorroAcumInit(); // antes de agregar este mes a Mi Historia
   E.ahorroAcum = r2(E.ahorroAcum + ah.enSobre);
@@ -5866,7 +6133,7 @@ function detPrestamos() {
   var pr = getPr(), out = [];
   ['me', 'yo'].forEach(function(tipo) {
     pr[tipo].forEach(function(x) {
-      out.push({tipo: tipo, q: x.q, pa: x.pa || '', fecha: x.fecha || '', st: x.st, mto: r2(Number(x.mto) || 0)});
+      out.push({tipo: tipo, q: x.q, pa: x.pa || '', fecha: x.fecha || '', st: x.st, mto: r2(Number(x.mto) || 0), abonado: abonadoPr(x), saldo: saldoPr(x)});
     });
   });
   return out;
@@ -5909,16 +6176,21 @@ function detalleMes(regs, ym) {
 // "Tu ahorro del mes" es informativo: ya está incluido arriba (en Salió, en
 // Directo a metas y en Del cobro a metas y ahorro) y no se resta otra vez.
 function resumenDe(item) {
-  var dm = Number(item.directoMetas) || 0, cg = Number(item.cobrosGuardado) || 0;
+  // Lo de un préstamo que te pagaron y fue a metas o Ahorro va en el mismo renglón que el del cobro de tanda.
+  var dm = Number(item.directoMetas) || 0, cg = Number(item.cobrosGuardado) || 0, pg = Number(item.prCobrosGuardado) || 0;
   var EI = entradaDe(item);
   var r = {arrastre: EI.arr, entro: EI.entro, desgTxt: EI.desg, desglose: EI.desg ? [{l: 'Ingreso', v: EI.ing}, {l: 'Extra', v: EI.ext}] : [],
-    suma: [{l: 'Cobro de tanda', v: Number(item.cobros) || 0}, {l: 'Retiro de ahorro', v: Number(item.retiros) || 0}],
-    resta: [{l: 'Directo a metas', v: dm}, {l: 'Del cobro a metas y ahorro', v: cg}],
-    salio: Number(item.gasto) || 0, dif: Number(item.dif) || 0};
+    suma: [{l: 'Cobro de tanda', v: Number(item.cobros) || 0}, {l: 'Retiro de ahorro', v: Number(item.retiros) || 0},
+      {l: 'Te pagaron un préstamo', v: Number(item.prCobros) || 0}, {l: 'Te prestaron', v: Number(item.tePrestaron) || 0}],
+    resta: [{l: 'Directo a metas', v: dm}, {l: 'Del cobro a metas y ahorro', v: r2(cg + pg)},
+      {l: 'Prestaste', v: Number(item.prestaste) || 0},
+      {l: 'Pagaste un préstamo', v: Number(item.pagaste) || 0}],
+    // Los pagos de préstamos salen del sobre Deudas, pero van en su renglón: Salió no los incluye.
+    salio: r2((Number(item.gasto) || 0) - (Number(item.pagaste) || 0)), dif: Number(item.dif) || 0};
   var tot = ahorroDeHistoria(item), usado = Number(item.usado) || 0, reg = Number(item.ahorroRegreso) || 0;
-  var enSalio = item.ahorroEnSalio !== undefined ? Number(item.ahorroEnSalio) || 0 : Math.max(0, r2(tot - dm - cg - reg));
+  var enSalio = item.ahorroEnSalio !== undefined ? Number(item.ahorroEnSalio) || 0 : Math.max(0, r2(tot - dm - cg - reg - pg));
   r.ahorro = {total: tot, usado: usado, neto: usado > 0 ? Number(item.neto) || 0 : tot,
-    enSalio: enSalio, directo: Math.min(dm, tot), delCobro: cg, regreso: reg};
+    enSalio: enSalio, directo: Math.min(dm, tot), delCobro: r2(cg + pg), regreso: reg};
   return r;
 }
 
@@ -6235,7 +6507,9 @@ function construirModeloReporte(item, tipo) {
   m.tarjetas = det ? det.tarjetas.map(function(t) { return {nom: t.nom, saldo: t.saldo, minimo: t.min, plan: t.plan, estimada: t.est}; }) : [];
   m.msi = det ? det.msi.map(function(x) { return {desc: x.nom, tarjeta: x.tc || 'Sin tarjeta', mens: x.mens, n: x.n, tot: x.tot, resta: x.resta}; }) : [];
   m.prestamos = det ? det.prestamos.map(function(p) {
-    return {quien: p.q, tipo: p.tipo === 'me' ? 'Te debe' : 'Le debes', desde: p.fecha, estado: p.st === 'pa' ? 'Pagado' : 'Pendiente', pagado: p.st === 'pa', mto: p.mto};
+    var abonado = p.abonado !== undefined ? p.abonado : 0, pagado = p.st === 'pa';
+    return {quien: p.q, tipo: p.tipo === 'me' ? 'Te debe' : 'Le debes', desde: p.fecha, pagado: pagado, mto: p.mto, abonado: abonado,
+      pendiente: pagado ? 0 : (p.saldo !== undefined ? p.saldo : r2(p.mto - abonado))};
   }) : [];
   m.tandas = det ? det.tandas.map(function(t) {
     return {nom: t.nom, aport: t.mto, pag: t.pagos, tot: t.part, cobrado: t.cobro > 0,
@@ -6467,8 +6741,10 @@ function construirPDFReporte(jsPDF, R, modelo) {
       return {c: [{txt: s.nom, sub: sub, subAncho: CW - 12}, s.asig, s.gast, r2(s.asig - s.gast), {barra: true, pct: pct}], h: sub ? 28 : 18};
     });
     if (!filas.length) { seccion('Detalle por sobre', 20); nota('Sin sobres con límite ni gastos este mes.'); return; }
+    var pagPr = modelo.resumen.resta[3].v;
     tabla('Detalle por sobre', cols, filas, ['Total', r2(ta), r2(tg), r2(ta - tg), ''],
-      'Asignado: límite guardado de ' + modelo.mesNom + ' (base + extras temporales de ese mes).');
+      'Asignado: límite guardado de ' + modelo.mesNom + ' (base + extras temporales de ese mes).' +
+      (pagPr ? ' Deudas incluye ' + pdfMonto(pagPr) + ' que pagaste de un préstamo; en el Resumen va en su renglón, no dentro de Salió.' : ''));
   })();
 
   // 3. Apartados y ajustes
@@ -6519,9 +6795,10 @@ function construirPDFReporte(jsPDF, R, modelo) {
   // 6. Préstamos
   if (falta('prestamos')) sinDetalle('Préstamos');
   else if (modelo.prestamos.length) (function() {
-    var cols = [{t: 'Persona', w: 150}, {t: 'Tipo', w: 110}, {t: 'Desde', w: 90}, {t: 'Estado', w: 76}, {t: 'Monto', w: CW - 426, al: 'r'}];
+    var cols = [{t: 'Persona', w: 140}, {t: 'Tipo', w: 70}, {t: 'Desde', w: 86}, {t: 'Monto', w: 74, al: 'r'}, {t: 'Abonado', w: 74, al: 'r'}, {t: 'Pendiente', w: CW - 444, al: 'r'}];
     tabla('Préstamos', cols, modelo.prestamos.map(function(p) {
-      return [p.quien, {txt: p.tipo, color: PDF_COL.sec}, {txt: p.desde, color: PDF_COL.sec}, {txt: p.estado, color: p.pagado ? PDF_COL.verde : PDF_COL.texto}, p.mto];
+      return [p.quien, {txt: p.tipo, color: PDF_COL.sec}, {txt: p.desde, color: PDF_COL.sec}, p.mto, p.abonado || '',
+        p.pagado ? {txt: 'Liquidado', color: PDF_COL.verde} : p.pendiente];
     }));
   })();
 
@@ -6705,8 +6982,13 @@ function textoCierre(item) {
     (Number(item.directoMetas) > 0 ? 'Directo a metas: ' + fmx(-item.directoMetas) + '\n' : '') +
     (Number(item.retiros) > 0 ? 'Retiro de ahorro: +' + fmx(item.retiros) + '\n' : '') +
     (Number(item.cobros) > 0 ? 'Cobro de tanda: +' + fmx(item.cobros) + '\n' : '') +
-    (Number(item.cobrosGuardado) > 0 ? 'Del cobro a metas y ahorro: ' + fmx(-item.cobrosGuardado) + '\n' : '') +
-    'Salió: ' + fmx(item.gasto) + '\n' +
+    (Number(item.prCobros) > 0 ? 'Te pagaron un préstamo: +' + fmx(item.prCobros) + '\n' : '') +
+    (r2((Number(item.cobrosGuardado) || 0) + (Number(item.prCobrosGuardado) || 0)) > 0
+      ? 'Del cobro a metas y ahorro: ' + fmx(-r2((Number(item.cobrosGuardado) || 0) + (Number(item.prCobrosGuardado) || 0))) + '\n' : '') +
+    (Number(item.tePrestaron) > 0 ? 'Te prestaron: +' + fmx(item.tePrestaron) + '\n' : '') +
+    (Number(item.prestaste) > 0 ? 'Prestaste: ' + fmx(-item.prestaste) + '\n' : '') +
+    (Number(item.pagaste) > 0 ? 'Pagaste un préstamo: ' + fmx(-item.pagaste) + '\n' : '') +
+    'Salió: ' + fmx(r2((Number(item.gasto) || 0) - (Number(item.pagaste) || 0))) + '\n' +
     (pos
       ? '✅ *Te sobró: ' + fmx(item.dif) + '*'
       : '⚠️ *Te pasaste: ' + fmx(Math.abs(item.dif)) + '*') +
@@ -6764,7 +7046,7 @@ function calcDisponibleMes() {
   var mtoBase = Number(E.perfil.mto) || 0;
   var arrastre = Number(E.saldoArrastrado) || 0;
   var extraMes = Number(E.ingresoExtraMes) || 0;
-  return r2(mtoBase + arrastre + extraMes + retirosMes() + cobrosMes().ef);
+  return r2(mtoBase + arrastre + extraMes + retirosMes() + cobrosMes().ef + efectoPrestamos(prestamosMes()));
 }
 // ── "EMPEZASTE CON" Y "ENTRÓ" (Bloque 8) ──
 // El arrastre no es ingreso: va en su propio renglón, al inicio.
@@ -6821,7 +7103,15 @@ function directoMetasMes() {
 // "Entró" de un cierre o corte: lo de base + lo que fue directo a metas.
 // Cierres viejos sin directoMetas se quedan como estaban.
 function entroMostrado(item) {
-  return r2((Number(item.mto) || 0) - (Number(item.retiros) || 0) - r2((Number(item.cobros) || 0) - (Number(item.cobrosGuardado) || 0)) + (Number(item.directoMetas) || 0));
+  return r2((Number(item.mto) || 0) - (Number(item.retiros) || 0) - r2((Number(item.cobros) || 0) - (Number(item.cobrosGuardado) || 0)) + (Number(item.directoMetas) || 0) -
+    r2((Number(item.prCobros) || 0) - (Number(item.prCobrosGuardado) || 0)) - (Number(item.tePrestaron) || 0) + (Number(item.prestaste) || 0));
+}
+// Renglones de préstamos de un mes (Mi Historia, corte y reporte). Solo se guardan si hubo.
+function ponerPrestamos(snap, o) {
+  if (o.prestaste > 0) snap.prestaste = o.prestaste;
+  if (o.recibido > 0) snap.tePrestaron = o.recibido;
+  if (o.cobro > 0) { snap.prCobros = o.cobro; if (o.guardado > 0) snap.prCobrosGuardado = o.guardado; }
+  if (o.pagaste > 0) snap.pagaste = o.pagaste;
 }
 // Retiro de ahorro "para gastarlo": sube el disponible pero no es ingreso.
 function txtRetiro(x) { return x > 0 ? '\u21A9 Retiro de ahorro +' + fmx(x) : ''; }
@@ -6830,10 +7120,12 @@ function txtCobro(tot, guardado) {
   if (!(tot > 0)) return '';
   return '\uD83E\uDD1D Cobro de tanda +' + fmx(tot) + (guardado > 0 ? '\n\uD83C\uDFAF Del cobro a metas y ahorro ' + fmx(-guardado) : '');
 }
-function mostrarLineaRetiro(elId, x, cob) {
+function mostrarLineaRetiro(elId, x, cob, pr) {
   var el = document.getElementById(elId);
   if (!el) return;
-  var t = [txtRetiro(x), cob ? txtCobro(cob.tot, cob.guardado) : ''].filter(function(z) { return z; }).join('\n');
+  var guard = r2((cob ? cob.guardado : 0) + (pr ? pr.guardado : 0));
+  var t = [txtRetiro(x), cob ? txtCobro(cob.tot, 0) : '', pr && pr.cobro > 0 ? '\uD83D\uDCB8 Te pagaron un préstamo +' + fmx(pr.cobro) : '',
+    guard > 0 ? '\uD83C\uDFAF Del cobro a metas y ahorro ' + fmx(-guard) : '', txtPrestamosLineas(pr)].filter(function(z) { return z; }).join('\n');
   el.textContent = t;
   el.style.whiteSpace = 'pre-line';
   el.style.display = t ? 'block' : 'none';
@@ -6863,7 +7155,7 @@ function calcAhorro(regs) {
   regs.forEach(function(r) {
     if (r.sobre === 'extra' && r.sub === 'retiro') { usado += retiroEfectivo(r); return; }
     if (r.sobre === 'extra' && r.sub === 'usado') { usado += Number(r.usado) || 0; return; }
-    if (r.sobre === 'extra' && r.sub === 'cobro') { aMetas += sumaObj(r.aMeta); enSobre += Number(r.aAhorro) || 0; return; }
+    if (r.sobre === 'extra' && (r.sub === 'cobro' || r.sub === 'prCobro')) { aMetas += sumaObj(r.aMeta); enSobre += Number(r.aAhorro) || 0; return; }
     if (r.sobre === 'extra' && r.sub === 'regreso') {
       if (r.origen === 'ahorro') enSobre += Number(r.regreso) || 0; else aMetas += Number(r.regreso) || 0;
       return;
@@ -6943,6 +7235,7 @@ function snapshotMesActual() {
     racha: (E.gamif && E.gamif.racha) || 0
   };
   if (ahW.usado > 0) { snapshot.usado = ahW.usado; snapshot.neto = ahW.neto; }
+  ponerPrestamos(snapshot, prestamosDe(regsW));
   snapshot.ahorroEnSalio = ahorroEnSalioDe(regsW);
   snapshot.ahorroRegreso = ahorroRegresoDe(regsW);
   var provW = provisionesMes(regsW, ymW);
@@ -7045,9 +7338,16 @@ function renderHistoria() {
         (R.suma[0].v > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83E\uDD1D Cobro de tanda</span>' +
             '<span class="historia-dato-val">+' + fmx(R.suma[0].v) + '</span></div>' : '') +
+        (R.suma[2].v > 0
+          ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83D\uDCB8 Te pagaron un préstamo</span>' +
+            '<span class="historia-dato-val">+' + fmx(R.suma[2].v) + '</span></div>' : '') +
         (R.resta[1].v > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83C\uDFAF Del cobro a metas y ahorro</span>' +
             '<span class="historia-dato-val">' + fmx(-R.resta[1].v) + '</span></div>' : '') +
+        [[R.suma[3], '+'], [R.resta[2], ''], [R.resta[3], '']].map(function(d) {
+          return d[0].v > 0 ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83D\uDCB8 ' + d[0].l + '</span>' +
+            '<span class="historia-dato-val">' + (d[1] ? '+' + fmx(d[0].v) : fmx(-d[0].v)) + '</span></div>' : '';
+        }).join('') +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">📤 Salió</span>' +
           '<span class="historia-dato-val g" style="color:#C4704F">' + fmx(R.salio) + '</span>' +
@@ -7182,7 +7482,7 @@ function chkNuevoMes() {
     // No se cerró a mano: se cierra solo, con la misma regla de arrastre que
     // el cierre manual (sobrante o déficit pasan al mes siguiente).
     var regsC = regsDeMes(nCerrar % 12, Math.floor(nCerrar / 12));
-    var mtoCerrado = r2((E.perfil.mto || 0) + (E.saldoArrastrado || 0) + (E.ingresoExtraMes || 0) + retirosDe(regsC) + cobrosDe(regsC).ef);
+    var mtoCerrado = r2((E.perfil.mto || 0) + (E.saldoArrastrado || 0) + (E.ingresoExtraMes || 0) + retirosDe(regsC) + cobrosDe(regsC).ef + efectoPrestamos(prestamosDe(regsC)));
     var nomCerrado = MESES_NOM[nCerrar % 12];
     var snap = archivarMes(nCerrar % 12, Math.floor(nCerrar / 12), mtoCerrado);
     E.saldoArrastrado = snap.dif;
@@ -9177,7 +9477,7 @@ function dlgDestinoExtra(val){
 // Salen:  retiro (para gastarlo) | usado (ya lo usé) | aAhorro (al sobre de Ahorro)
 var TIPO_MOV_META = {sobre:'Abono desde un sobre', extra:'Ingreso extra', traspaso:'Traspaso desde Ahorro',
   previo:'Ahorros previos', sobrante:'Sobrante del cierre', regreso:'Regreso de un retiro', inicial:'Saldo anterior (sin detalle)',
-  retiro:'Retiro para gastar', usado:'Ya lo usé', aAhorro:'Retiro a tu sobre de Ahorro', tanda:'Cobro de tanda'};
+  retiro:'Retiro para gastar', usado:'Ya lo usé', aAhorro:'Retiro a tu sobre de Ahorro', tanda:'Cobro de tanda', prestamo:'Te pagaron un préstamo'};
 var _ultIdMov = 0;
 function movMeta(m, tipo, mto, extra) {
   if (!m.movs) m.movs = [];
@@ -9441,6 +9741,7 @@ function pendientesMes() {
     if (r.sobre !== 'extra' || periodoDe(r) !== p) return;
     if (r.sub === 'retiro' && retiroPendiente(r) > 0) out.push({r:r, tipo:'retiro', mto:retiroPendiente(r)});
     if (r.sub === 'cobro' && cobroPendiente(r) > 0) out.push({r:r, tipo:'cobro', mto:cobroPendiente(r)});
+    if ((r.sub === 'prCobro' || r.sub === 'prRecibido') && cobroPendiente(r) > 0) out.push({r:r, tipo:r.sub, mto:cobroPendiente(r)});
     if (r.sub === 'ingreso' && r.destino && r.destino.tipo === 'pendiente' && Number(r.ingreso) > 0) out.push({r:r, tipo:'extra', mto:r2(r.ingreso)});
   });
   return out;
@@ -9448,7 +9749,7 @@ function pendientesMes() {
 function asignarPendiente(pd, sobreId, mto) {
   if (!E.limsExtraMes) E.limsExtraMes = {};
   E.limsExtraMes[sobreId] = r2((E.limsExtraMes[sobreId] || 0) + mto);
-  if (pd.tipo === 'retiro' || pd.tipo === 'cobro') {
+  if (pd.tipo === 'retiro' || pd.tipo === 'cobro' || pd.tipo === 'prCobro' || pd.tipo === 'prRecibido') {
     if (!pd.r.asignado) pd.r.asignado = {};
     pd.r.asignado[sobreId] = r2((pd.r.asignado[sobreId] || 0) + mto);
   } else {
