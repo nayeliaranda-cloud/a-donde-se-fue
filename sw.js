@@ -11,7 +11,13 @@ const ASSETS_TO_CACHE = [
   '/apple-touch-icon.png',
   '/fonts/fraunces.woff2',
   '/fonts/dm-sans.woff2',
-  '/fonts/caveat.woff2'
+  '/fonts/caveat.woff2',
+  // Reporte PDF (Bloque 8): librería, fuentes del PDF y logo
+  '/lib/jspdf.umd.min.js',
+  '/fonts/pdf-dmsans-400.ttf',
+  '/fonts/pdf-dmsans-600.ttf',
+  '/fonts/pdf-fraunces-600.ttf',
+  '/logo-pdf.png'
 ];
 
 // Instalación: guarda los archivos base en caché

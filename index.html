@@ -835,9 +835,9 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
         <div class="d-chip"><div class="d-cl">Entró</div><div class="d-cv" id="d-ent">$0</div></div>
         <div class="d-chip"><div class="d-cl">Salió</div><div class="d-cv" id="d-sal">$0</div></div>
         <div class="d-chip"><div class="d-cl">Hoy puedes</div><div class="d-cv" id="d-hoy">$0</div></div>
-        <div class="d-chip" id="chip-arrastre" style="display:none"><div class="d-cl" id="arr-chip-lbl">Arrastre</div><div class="d-cv" id="arr-chip-val" style="color:#7A9E7E">$0</div></div>
       </div>
-      <div id="d-desg" style="display:none;font-size:11px;opacity:.85;margin-top:6px"></div>
+      <div id="d-arr" style="display:none;font-size:11px;opacity:.85;margin-top:6px"></div>
+      <div id="d-desg" style="display:none;font-size:11px;opacity:.85;margin-top:2px"></div>
       <div id="d-dmet" style="display:none;font-size:11px;opacity:.85;margin-top:2px"></div>
       <div id="d-ret" style="display:none;font-size:11px;opacity:.85;margin-top:2px"></div>
       <div class="hero-sobres" id="hero-sobres"></div>
@@ -919,11 +919,12 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div class="rep-c"><div class="rep-cl">Diferencia</div><div class="rep-cv" id="r-dif">$0</div></div>
       <div class="rep-c"><div class="rep-cl">Margen</div><div class="rep-cv" id="r-mg" style="color:#4E7A52">0%</div></div>
     </div>
-    <div id="r-desg" style="display:none;font-size:11px;color:#7D5F4E;margin-top:6px;text-align:center"></div>
+    <div id="r-arr" style="display:none;font-size:11px;color:#7D5F4E;margin-top:6px;text-align:center"></div>
+    <div id="r-desg" style="display:none;font-size:11px;color:#7D5F4E;margin-top:2px;text-align:center"></div>
     <div id="r-dmet" style="display:none;font-size:11px;color:#7D5F4E;margin-top:2px;text-align:center"></div>
     <div id="r-ret" style="display:none;font-size:11px;color:#7D5F4E;margin-top:2px;text-align:center"></div>
     <div id="r-prov" style="display:none;font-size:11px;color:#7D5F4E;margin-top:4px;text-align:center"></div>
-    <button class="btn-pri" onclick="compartirWhatsApp()" style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px">📤 Enviar / Imprimir reporte</button>
+    <button class="btn-pri" onclick="dlgElegirMesReporte()" style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px">&#x1F4C4; Generar reporte</button>
     <div class="grf-w"><div class="grf-t">Ingresos vs Gastos</div><div class="grf-bars" id="grf-bars"></div>
       <div style="display:flex;gap:14px;margin-top:10px;justify-content:center">
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#7D5F4E"><div style="width:10px;height:10px;border-radius:2px;background:#7A9E7E"></div>Ingresos</div>
@@ -1015,6 +1016,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
         <div class="cierre-chip-val g" id="cierre-salio">$0</div>
       </div>
     </div>
+    <div id="cierre-arr" style="display:none;font-size:11px;color:#7D5F4E;text-align:center;margin:-4px 0 4px"></div>
     <div id="cierre-desg" style="display:none;font-size:11px;color:#7D5F4E;text-align:center;margin:-4px 0 8px"></div>
     <div id="cierre-dmet" style="display:none;font-size:11px;color:#7D5F4E;text-align:center;margin:-6px 0 8px"></div>
     <div id="cierre-ret" style="display:none;font-size:11px;color:#7D5F4E;text-align:center;margin:-6px 0 8px"></div>
@@ -2017,11 +2019,13 @@ function actualizarUI() {
   var dMtoEl = document.getElementById('d-mto');
   if (dMtoEl) dMtoEl.innerHTML = fmxPeso(disp);
   var dmU = directoMetasMes(), retU = retirosMes(), cobU = cobrosMes();
-  st('d-ent', fmx(r2(mtoTotal - retU - cobU.ef + dmU)));
+  var EA = entradaActual();
+  st('d-ent', fmx(EA.entro));
+  mostrarArrastre('d-arr', EA.arr, false);
   mostrarLineaRetiro('d-ret', retU, cobU);
   var dDesg = document.getElementById('d-desg');
   if (dDesg) {
-    var txtDesg = desgloseEntroActual(), hayExt = gruposIngresoExtra().length > 0;
+    var txtDesg = EA.desg, hayExt = gruposIngresoExtra().length > 0;
     dDesg.textContent = txtDesg ? 'Entró: ' + txtDesg + (hayExt ? ' ›' : '') : '';
     dDesg.style.display = txtDesg ? 'block' : 'none';
     dDesg.style.cursor = hayExt ? 'pointer' : '';
@@ -2046,31 +2050,15 @@ function actualizarUI() {
       var txt = document.getElementById('arr-txt');
       var sub = document.getElementById('arr-sub');
       if (ico) ico.textContent = esPos ? '✅' : '⚠️';
+      var mesAntB = mesAnteriorNom(ymNum(periodoActual()) % 12);
       if (txt) txt.textContent = esPos
-        ? 'Arrastras ' + fmx(arrastre) + ' del mes anterior'
-        : 'Déficit de ' + fmx(Math.abs(arrastre)) + ' del mes anterior';
+        ? 'Empezaste con ' + fmx(arrastre) + ' de ' + mesAntB
+        : 'Te faltó ' + fmx(Math.abs(arrastre)) + ' en ' + mesAntB;
       if (sub) sub.textContent = esPos
         ? 'Ya sumado a tu disponible de este mes'
         : 'Ya descontado de tu disponible de este mes';
     } else {
       banArr.style.display = 'none';
-    }
-  }
-
-  // Chip de arrastre en tarjeta
-  var chipArr = document.getElementById('chip-arrastre');
-  var chipLbl = document.getElementById('arr-chip-lbl');
-  var chipVal = document.getElementById('arr-chip-val');
-  if (chipArr) {
-    if (arrastre !== 0) {
-      chipArr.style.display = '';
-      if (chipLbl) chipLbl.textContent = arrastre > 0 ? 'Arrastre ↑' : 'Déficit ↓';
-      if (chipVal) {
-        chipVal.textContent = (arrastre > 0 ? '+' : '') + fmx(arrastre);
-        chipVal.style.color = arrastre > 0 ? '#7A9E7E' : '#D9534F';
-      }
-    } else {
-      chipArr.style.display = 'none';
     }
   }
 
@@ -4630,7 +4618,7 @@ function renderReportes() {
   st('r-ent-lbl', esSem ? 'Presupuesto de la semana' : 'Entró');
   var rDesg = document.getElementById('r-desg');
   if (rDesg) {
-    var txtR = esSem ? (entMes > 0 ? 'Tu mes (' + fmx(entMes) + ') entre ' + diasMesPer + ' días, por 7' : '') : desgloseEntroActual();
+    var txtR = esSem ? (entMes > 0 ? 'Tu mes (' + fmx(entMes) + ') entre ' + diasMesPer + ' días, por 7' : '') : entradaActual().desg;
     rDesg.textContent = txtR ? (esSem ? txtR : 'Entró: ' + txtR) : '';
     rDesg.style.display = txtR ? 'block' : 'none';
   }
@@ -4641,7 +4629,8 @@ function renderReportes() {
     rPr.style.display = txtPr ? 'block' : 'none';
   }
   var dmR = esSem ? 0 : directoMetasMes(), retR = esSem ? 0 : retirosMes(), cobR = esSem ? null : cobrosMes();
-  st('r-ent', fmx(r2(mto - retR - (cobR ? cobR.ef : 0) + dmR)));
+  st('r-ent', fmx(esSem ? mto : entradaActual().entro));
+  mostrarArrastre('r-arr', esSem ? null : entradaActual().arr, true);
   mostrarLineaRetiro('r-ret', retR, cobR);
   mostrarDirectoMetas('r-dmet', dmR);
   if (rDesg && !esSem && gruposIngresoExtra().length) { rDesg.textContent += ' ›'; rDesg.style.cursor = 'pointer'; rDesg.onclick = dlgIngresosExtra; }
@@ -5604,12 +5593,14 @@ function prepararCierre() {
     : '⚠️ Te pasaste este mes');
 
   var dmC = directoMetasMes(), retC = retirosMes(), cobC = cobrosMes();
-  st('cierre-entro', fmx(r2(mto - retC - cobC.ef + dmC)));
+  var EC = entradaActual();
+  st('cierre-entro', fmx(EC.entro));
+  mostrarArrastre('cierre-arr', EC.arr, true);
   mostrarLineaRetiro('cierre-ret', retC, cobC);
   mostrarDirectoMetas('cierre-dmet', dmC);
   st('cierre-salio', fmx(gasto));
   var cDesg = document.getElementById('cierre-desg');
-  if (cDesg) { var txtC = desgloseEntroActual(); cDesg.textContent = txtC ? 'Entró: ' + txtC : ''; cDesg.style.display = txtC ? 'block' : 'none'; }
+  if (cDesg) { var txtC = EC.desg; cDesg.textContent = txtC ? 'Entró: ' + txtC : ''; cDesg.style.display = txtC ? 'block' : 'none'; }
   var cAh = document.getElementById('cierre-ahorro');
   if (cAh) { var txtA = txtAhorraste(calcAhorro(E.regs.filter(function(r) { return periodoDe(r) === periodoActual(); }))); cAh.textContent = txtA ? '\uD83D\uDCB0 ' + txtA : ''; cAh.style.display = txtA ? 'block' : 'none'; }
   var cPr = document.getElementById('cierre-prov');
@@ -5912,21 +5903,18 @@ function detalleMes(regs, ym) {
 }
 
 // Resumen de un mes: los renglones y números de Mi Historia (y del reporte PDF).
-// Suma: Entró, Cobro de tanda, Retiro de ahorro. Resta: Directo a metas, Del
-// cobro a metas y ahorro, Salió. Te sobró = suma − resta (= item.dif).
+// Suma: Empezaste con (sobrante del mes anterior), Entró (ingreso + extra), Cobro
+// de tanda, Retiro de ahorro. Resta: Te faltó en (déficit del mes anterior),
+// Directo a metas, Del cobro a metas y ahorro, Salió. Te sobró = suma − resta (= item.dif).
 // "Tu ahorro del mes" es informativo: ya está incluido arriba (en Salió, en
 // Directo a metas y en Del cobro a metas y ahorro) y no se resta otra vez.
 function resumenDe(item) {
   var dm = Number(item.directoMetas) || 0, cg = Number(item.cobrosGuardado) || 0;
-  var r = {entro: entroMostrado(item), desglose: [],
+  var EI = entradaDe(item);
+  var r = {arrastre: EI.arr, entro: EI.entro, desgTxt: EI.desg, desglose: EI.desg ? [{l: 'Ingreso', v: EI.ing}, {l: 'Extra', v: EI.ext}] : [],
     suma: [{l: 'Cobro de tanda', v: Number(item.cobros) || 0}, {l: 'Retiro de ahorro', v: Number(item.retiros) || 0}],
     resta: [{l: 'Directo a metas', v: dm}, {l: 'Del cobro a metas y ahorro', v: cg}],
     salio: Number(item.gasto) || 0, dif: Number(item.dif) || 0};
-  if (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item))) {
-    var mesAnt = typeof item.mesIdx === 'number' ? MESES_NOM[(item.mesIdx + 11) % 12].toLowerCase() : '';
-    r.desglose = [{l: 'Ingreso', v: Number(item.ing) || 0}, {l: 'Arrastre' + (mesAnt ? ' de ' + mesAnt : ''), v: Number(item.arr) || 0},
-      {l: 'Ingreso extra', v: extItem(item)}].filter(function(d) { return d.v; });
-  }
   var tot = ahorroDeHistoria(item), usado = Number(item.usado) || 0, reg = Number(item.ahorroRegreso) || 0;
   var enSalio = item.ahorroEnSalio !== undefined ? Number(item.ahorroEnSalio) || 0 : Math.max(0, r2(tot - dm - cg - reg));
   r.ahorro = {total: tot, usado: usado, neto: usado > 0 ? Number(item.neto) || 0 : tot,
@@ -6114,14 +6102,13 @@ function dlgCrearFondoSobrante(monto, snapshot) {
 
 function dlgOpcionesEnvio(snapshot) {
   dlg({
-    e: '📤', t: '¿Cómo enviamos el resumen?',
+    e: '\uD83D\uDCE4', t: '¿Cómo enviamos el resumen?',
     s: snapshot.mes + ' listo para compartir',
     btns: [
-      {l: '💬 WhatsApp', c: 'p', f: function() { cerrarDlg(); compartirCierre(snapshot); }},
-      {l: '📧 Correo', c: 's', f: function() { enviarCorreoCierre(snapshot); }},
-      {l: '📋 Copiar texto', c: 's', f: function() { copiarTextoCierre(snapshot); }},
-      {l: '📄 Descargar PDF', c: 's', f: function() { cerrarDlg(); descargarPDFCierre(snapshot); }},
-      {l: 'Ver Mi Historia', c: 's', f: function() { cerrarDlg(); irA('p-rep'); renderReportes(); }},
+      {l: '\uD83D\uDCC4 Generar reporte PDF', c: 'p', f: function() { dlgTipoReporte(snapshot); }},
+      {l: '\uD83D\uDCAC Resumen por WhatsApp (texto)', c: 's', f: function() { compartirCierreTextoPlano(snapshot); }},
+      {l: '\uD83D\uDCCB Copiar texto', c: 's', f: function() { copiarTextoCierre(snapshot); }},
+      {l: 'Ver Mi Historia', c: 's', f: function() { irA('p-rep'); renderReportes(); }},
       {l: 'Cerrar', c: 's', f: null}
     ]
   });
@@ -6151,213 +6138,526 @@ function dlgAbonarSobrante(monto, snapshot) {
   });
 }
 
-// ── GENERADOR DE PDF (reporte financiero, sin librerías externas) ──
-// Construye un PDF válido a mano (objetos PDF 1.4 + tabla xref) usando solo
-// las fuentes estándar Helvetica/Helvetica-Bold — así el PDF se puede
-// adjuntar de verdad al compartir por WhatsApp (vía Web Share API) sin
-// sumarle al archivo único de la app una librería externa de cientos de KB.
-var PDF_ANCHO_NUM = {
-  ' ':278,'$':556,'%':889,'-':333,',':278,'.':278,'/':278,
-  '0':556,'1':556,'2':556,'3':556,'4':556,'5':556,'6':556,'7':556,'8':556,'9':556
-};
-function pdfAnchoNum(str, size) {
-  var w = 0;
-  for (var i = 0; i < str.length; i++) w += (PDF_ANCHO_NUM[str[i]] != null ? PDF_ANCHO_NUM[str[i]] : 556);
-  return w * size / 1000;
-}
-function pdfAnchoAprox(str, size, bold) {
-  return str.length * size * (bold ? 0.56 : 0.52);
-}
-var PDF_MAPA_ESP = {0x2014:0x97,0x2013:0x96,0x2026:0x85,0x2022:0x95,0x203A:0x9B,0x2039:0x8B,0x2018:0x91,0x2019:0x92,0x201C:0x93,0x201D:0x94};
-// Sanea a Latin-1/WinAnsi (las únicas 256 posiciones que las fuentes base del
-// PDF saben dibujar) — los emoji del resto de la app no tienen glifo aquí y
-// se omiten; un reporte financiero sin emoji además luce más "de banco".
-function pdfTexto(s) {
+// ════ REPORTE PDF (Bloque 8) ══════════════════════
+// Se dibuja con jsPDF (archivo local, se carga solo al generar) y copias de
+// DM Sans y Fraunces con los dígitos del mismo ancho (licencias en fonts/OFL-*.txt).
+// Flujo: "Generar reporte" → mes → resumido (predeterminado) o completo →
+// "Tu reporte está listo" → Compartir (archivo) o Descargar. Funciona en modo
+// consulta (no escribe nada). El PDF no lleva emojis: todo texto pasa por pdfLimpio().
+var PDF_RECURSOS = {lib: 'lib/jspdf.umd.min.js', dm400: 'fonts/pdf-dmsans-400.ttf', dm600: 'fonts/pdf-dmsans-600.ttf',
+  fr600: 'fonts/pdf-fraunces-600.ttf', logo: 'logo-pdf.png', logoW: 289, logoH: 222};
+var PDF_COL = {texto: '#3D2B1F', sec: '#7D5F4E', verde: '#4E7A52', salvia: '#7A9E7E', neg: '#C4704F',
+  crema: '#FAF6F0', fila: '#F4F7F5', fino: '#E6DED3', pista: '#EFE8DE'};
+var MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+var _pdfRec = null;
+
+// Solo caracteres que las fuentes del PDF saben dibujar; emojis y símbolos raros se quitan.
+function pdfLimpio(s) {
   s = String(s == null ? '' : s);
+  if (s.normalize) s = s.normalize('NFC');
   var out = '';
   for (var i = 0; i < s.length; i++) {
-    var cp = s.codePointAt(i);
-    if (cp > 0xFFFF) { i++; continue; }
-    if (cp <= 0xFF) { out += String.fromCharCode(cp); continue; }
-    if (PDF_MAPA_ESP[cp] !== undefined) { out += String.fromCharCode(PDF_MAPA_ESP[cp]); continue; }
+    var c = s.charCodeAt(i);
+    var ok = (c >= 0x20 && c <= 0x7E) || (c >= 0xA0 && c <= 0xFF && c !== 0xAD) ||
+      c === 0x2013 || c === 0x2014 || c === 0x2018 || c === 0x2019 || c === 0x201A ||
+      c === 0x201C || c === 0x201D || c === 0x201E || c === 0x2022 || c === 0x2026;
+    out += ok ? s[i] : ' ';
   }
-  return out;
+  return out.replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
 }
-function pdfEscStr(s) {
-  return pdfTexto(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+// $1,234.56 · -$1,234.56 (siempre con centavos, como estado de cuenta)
+function pdfMonto(n) {
+  n = r2(Number(n) || 0);
+  var neg = n < 0, a = Math.abs(n);
+  var ent = Math.floor(a), cen = Math.round((a - ent) * 100);
+  if (cen === 100) { ent += 1; cen = 0; }
+  return (neg ? '-$' : '$') + String(ent).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + (cen < 10 ? '0' : '') + cen;
 }
-function PDFReporte() {
-  this.W = 612; this.H = 792; this.M = 50;
-  this.ops = [];
-  this._fill = null; this._stroke = null; this._lw = null;
+function pdfFechaLarga(d) { return d.getDate() + ' de ' + MESES_NOM[d.getMonth()].toLowerCase() + ' de ' + d.getFullYear(); }
+function fechaCortaIso(f) {
+  var p = String(f || '').split('-');
+  return p.length < 3 ? '' : p[2] + ' ' + MESES_CORTO[(parseInt(p[1], 10) || 1) - 1];
 }
-PDFReporte.prototype._hexRGB = function(hex) {
-  var r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
-  return r.toFixed(3)+' '+g.toFixed(3)+' '+b.toFixed(3);
-};
-PDFReporte.prototype.fillColor = function(hex) {
-  if (hex === this._fill) return; this._fill = hex;
-  this.ops.push(this._hexRGB(hex)+' rg');
-};
-PDFReporte.prototype.strokeColor = function(hex) {
-  if (hex === this._stroke) return; this._stroke = hex;
-  this.ops.push(this._hexRGB(hex)+' RG');
-};
-PDFReporte.prototype.rect = function(x,y,w,h,hex) {
-  this.fillColor(hex);
-  this.ops.push(x.toFixed(2)+' '+y.toFixed(2)+' '+w.toFixed(2)+' '+h.toFixed(2)+' re f');
-};
-PDFReporte.prototype.linea = function(x1,y1,x2,y2,hex,grosor) {
-  this.strokeColor(hex);
-  if (grosor !== this._lw) { this._lw = grosor; this.ops.push(grosor.toFixed(2)+' w'); }
-  this.ops.push(x1.toFixed(2)+' '+y1.toFixed(2)+' m '+x2.toFixed(2)+' '+y2.toFixed(2)+' l S');
-};
-// opts: {bold, size, color, align:'left'|'right'|'center', numeric:bool}
-PDFReporte.prototype.texto = function(x, y, str, opts) {
-  opts = opts || {};
-  var bold = !!opts.bold, size = opts.size || 10, hex = opts.color || '#3D2B1F';
-  var s = pdfEscStr(str);
-  var ancho = opts.numeric ? pdfAnchoNum(pdfTexto(str), size) : pdfAnchoAprox(pdfTexto(str), size, bold);
-  var xx = x;
-  if (opts.align === 'right') xx = x - ancho;
-  else if (opts.align === 'center') xx = x - ancho/2;
-  this.fillColor(hex);
-  var font = bold ? 'F2' : 'F1';
-  this.ops.push('BT /'+font+' '+size+' Tf '+xx.toFixed(2)+' '+y.toFixed(2)+' Td ('+s+') Tj ET');
-};
-PDFReporte.prototype.bytes = function() {
-  var objetos = [];
-  var stream = this.ops.join('\n');
-  objetos[0] = '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n';
-  objetos[1] = '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n';
-  objetos[2] = '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+this.W+' '+this.H+'] ' +
-    '/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>\nendobj\n';
-  objetos[3] = '4 0 obj\n<< /Length '+stream.length+' >>\nstream\n'+stream+'\nendstream\nendobj\n';
-  objetos[4] = '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n';
-  objetos[5] = '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n';
-  var out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
-  var offsets = [0];
-  for (var i = 0; i < objetos.length; i++) { offsets.push(out.length); out += objetos[i]; }
-  var xrefStart = out.length;
-  out += 'xref\n0 '+(objetos.length+1)+'\n0000000000 65535 f \n';
-  for (var j = 1; j <= objetos.length; j++) out += String(offsets[j]).padStart(10,'0') + ' 00000 n \n';
-  out += 'trailer\n<< /Size '+(objetos.length+1)+' /Root 1 0 R >>\nstartxref\n'+xrefStart+'\n%%EOF';
-  var buf = new Uint8Array(out.length);
-  for (var k = 0; k < out.length; k++) buf[k] = out.charCodeAt(k) & 0xFF;
-  return buf;
-};
+// Reporte-Octubre-2026.pdf (resumido) · Reporte-Octubre-2026-completo.pdf
+function nombrePDFReporte(mes, tipo) {
+  return 'Reporte-' + pdfLimpio(mes).replace(/\s+/g, '-') + (tipo === 'completo' ? '-completo' : '') + '.pdf';
+}
+function txtProvisionesPDF(p) {
+  if (!p) return '';
+  var t = [];
+  if (p.apartados) t.push('Apartado para recibos ' + pdfMonto(p.apartados));
+  if (p.ajustes) t.push('Ajuste recibo real ' + (p.ajustes < 0 ? 'a tu favor ' + pdfMonto(-p.ajustes) : pdfMonto(p.ajustes)));
+  if (p.liberado) t.push('Fondo liberado ' + pdfMonto(Math.abs(p.liberado)));
+  if (p.pagadoFondo) t.push('Pagado desde fondos ' + pdfMonto(p.pagadoFondo) + ' (ya contado)');
+  return t.join(' · ');
+}
 
-// Arma el reporte financiero (mismos datos que textoCierre/enviarCorreoCierre)
-// como un PDF de una página con tablas alineadas — el "look" de estado de cuenta.
-function construirReportePDF(item) {
-  var pos = item.dif >= 0;
-  var nom = E.perfil.nom || '';
-  var esCerrado = item.cerrado !== false;
-  var doc = new PDFReporte();
-  var M = doc.M, W = doc.W;
-  var y = doc.H - M;
+// ── Datos del reporte (mismos números que Mi Historia: resumenDe) ──
+function construirModeloReporte(item, tipo) {
+  var R = resumenDe(item);
+  var det = detValido(item.det) ? item.det : null;
+  var mesNom = MESES_NOM[item.mesIdx].toLowerCase();
+  var ym = ymDeNum(item.anio * 12 + item.mesIdx);
+  var m = {tipo: tipo, nombre: E.perfil.nom || '', mes: item.mes, mesNom: mesNom, cerrado: item.cerrado !== false,
+    periodo: 'Del 1 al ' + new Date(item.anio, item.mesIdx + 1, 0).getDate() + ' de ' + mesNom + ' de ' + item.anio,
+    corte: item.fecha ? new Date(item.fecha) : new Date(), generado: new Date(), resumen: R,
+    provisiones: txtProvisionesPDF(item.provisiones), faltan: det ? [] : ['apartados', 'movs', 'tarjetas', 'prestamos', 'tandas']};
+  m.sobres = det ? det.sobres.map(function(s) {
+    return {nom: s.nom, base: s.base, extra: s.extra, asig: r2(s.base + s.extra), gast: s.gast};
+  }) : (item.sobres || []).map(function(s) {
+    var lim = s.lim !== undefined ? Number(s.lim) || 0 : Number(E.lims[s.id]) || 0; // límite de ESE mes
+    return {nom: s.nom, base: lim, extra: 0, asig: lim, gast: Number(s.mto) || 0};
+  });
+  var LBL_AP = {apartado: 'Apartado para el recibo', ajusteRecibo: 'Ajuste por recibo real', fondoLiberado: 'Fondo liberado', pago: 'Pago del recibo'};
+  m.apartados = det ? det.apartados.map(function(a) {
+    var sub = '';
+    if (a.t === 'pago') sub = a.fondo ? 'Desde el fondo: ' + pdfMonto(a.fondo) + ' · del sobre: ' + pdfMonto(r2(a.m - a.fondo)) : 'Del sobre';
+    return {serv: a.serv, mov: (LBL_AP[a.t] || a.t) + (a.t === 'ajusteRecibo' && a.m < 0 ? ' (a tu favor)' : ''), det: sub,
+      mto: Math.abs(a.m), signo: a.m < 0 ? -1 : 1, suma: a.t !== 'pago'};
+  }) : [];
+  var LBL_MV = {ingreso: 'Ingreso extra', cobro: 'Cobro de tanda', retiro: 'Retiro de ahorro', usado: 'Ya lo usé', regreso: 'Regreso a tu ahorro'};
+  m.movs = det ? det.movs.map(function(mv) {
+    var r = {fecha: fechaCortaIso(mv.f)};
+    if (mv.t) {
+      r.sobre = LBL_MV[mv.t] || 'Movimiento';
+      if (mv.t === 'cobro') r.desc = mv.tanda ? 'Tanda ' + mv.tanda : 'Cobro de tanda';
+      else if (mv.t === 'ingreso') r.desc = mv.n || 'Ingreso extra';
+      else r.desc = (mv.meta ? 'De ' + mv.meta : r.sobre);
+      if (mv.t === 'ingreso' || mv.t === 'cobro' || mv.t === 'retiro') r.entra = mv.e;
+      else r.desc += ': ' + pdfMonto(mv.e);
+    } else {
+      r.sobre = mv.sn;
+      r.desc = mv.n || mv.cn || 'Sin nota';
+      r.sale = mv.m;
+    }
+    return r;
+  }) : [];
+  m.tarjetas = det ? det.tarjetas.map(function(t) { return {nom: t.nom, saldo: t.saldo, minimo: t.min, plan: t.plan, estimada: t.est}; }) : [];
+  m.msi = det ? det.msi.map(function(x) { return {desc: x.nom, tarjeta: x.tc || 'Sin tarjeta', mens: x.mens, n: x.n, tot: x.tot, resta: x.resta}; }) : [];
+  m.prestamos = det ? det.prestamos.map(function(p) {
+    return {quien: p.q, tipo: p.tipo === 'me' ? 'Te debe' : 'Le debes', desde: p.fecha, estado: p.st === 'pa' ? 'Pagado' : 'Pendiente', pagado: p.st === 'pa', mto: p.mto};
+  }) : [];
+  m.tandas = det ? det.tandas.map(function(t) {
+    return {nom: t.nom, aport: t.mto, pag: t.pagos, tot: t.part, cobrado: t.cobro > 0,
+      cobro: 'Turno ' + t.turno + (t.cobro > 0 ? ' · Cobraste el ' + fechaCortaIso(t.fCobro) + ': ' + pdfMonto(t.cobro) : ' de ' + t.part)};
+  }) : [];
+  // Metas: la copia del mes; en meses cerrados antes de guardarla, los movimientos que conservan las metas.
+  m.metas = (det ? det.metas : detMetas(ym)).map(function(x) {
+    var pct = x.meta > 0 ? Math.round(x.saldo / x.meta * 100) : 0;
+    return {nom: x.nom, sub: x.meta > 0 ? pdfMonto(x.saldo) + ' de ' + pdfMonto(x.meta) + ' (' + pct + '%)' : '',
+      abonos: x.ab, retiros: x.ret, usado: x.us, saldo: x.saldo};
+  });
+  return m;
+}
 
-  var tituloPeriodo = esCerrado
-    ? 'Cierre de ' + item.mes + (nom ? ' — ' + nom : '')
-    : 'Del 1 al ' + (item.fecha ? new Date(item.fecha).getDate() : new Date().getDate()) + ' de ' + item.mes + (nom ? ' — ' + nom : '');
-  var etiquetaEstado = esCerrado ? 'ESTADO DE CUENTA FINAL' : 'CORTE PARCIAL · EL MES SIGUE ABIERTO';
+// ── Dibujo (estilo contable). Devuelve la instancia de jsPDF. ──
+function construirPDFReporte(jsPDF, R, modelo) {
+  var doc = new jsPDF({unit: 'pt', format: 'letter', compress: true, putOnlyUsedFonts: true});
+  doc.addFileToVFS('dm400.ttf', R.dm400); doc.addFont('dm400.ttf', 'DMSans', 'normal');
+  doc.addFileToVFS('dm600.ttf', R.dm600); doc.addFont('dm600.ttf', 'DMSans', 'bold');
+  doc.addFileToVFS('fr600.ttf', R.fr600); doc.addFont('fr600.ttf', 'Fraunces', 'normal');
+  doc.setProperties({title: 'Reporte ' + pdfLimpio(modelo.mes), creator: pdfLimpio('¿A Dónde Se Fue?')});
 
-  doc.texto(W/2, y, '¿A Dónde Se Fue?', {bold:true, size:20, color:'#C4704F', align:'center'});
-  y -= 20;
-  doc.texto(W/2, y, tituloPeriodo, {size:12, color:'#6B4C3B', align:'center'});
-  y -= 16;
-  doc.texto(W/2, y, etiquetaEstado, {bold:true, size:8, color:'#C4704F', align:'center'});
-  y -= 14;
-  doc.linea(M, y, W-M, y, '#C4704F', 2);
-  y -= 26;
+  var PW = 612, PH = 792, M = 48, CW = PW - 2 * M;
+  var LIM = PH - 66;        // último renglón posible antes del pie
+  var y = 0;
+  var filasDibujadas = [];  // {pag, y0, y1}: ninguna fila pasa del límite
 
-  doc.texto(M, y, 'Entró', {size:11, color:'#6B4C3B'});
-  doc.texto(W-M, y, fmx(entroMostrado(item)), {size:11, bold:true, align:'right', numeric:true});
-  if (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item))) {
-    y -= 13;
-    doc.texto(M, y, desgloseEntro(item.ing, item.arr, extItem(item)), {size:9, color:'#7D5F4E'});
+  function fuente(f, tam, color) {
+    if (f === 'fr') doc.setFont('Fraunces', 'normal');
+    else doc.setFont('DMSans', f === 'b' ? 'bold' : 'normal');
+    doc.setFontSize(tam);
+    doc.setTextColor(color || PDF_COL.texto);
   }
-  if (Number(item.directoMetas) > 0) {
-    y -= 15;
-    doc.texto(M, y, 'Directo a metas', {size:11, color:'#6B4C3B'});
-    doc.texto(W-M, y, fmx(-item.directoMetas), {size:11, bold:true, align:'right', numeric:true});
+  function t(s, x, yy, op) { doc.text(pdfLimpio(s), x, yy, op || {}); }
+  function ancho(s) { return doc.getTextWidth(pdfLimpio(s)); }
+  function recorta(s, w) {
+    s = pdfLimpio(s);
+    if (ancho(s) <= w) return s;
+    while (s.length > 1 && ancho(s + '…') > w) s = s.slice(0, -1);
+    return s.replace(/\s+$/, '') + '…';
   }
-  if (Number(item.retiros) > 0) {
-    y -= 15;
-    doc.texto(M, y, 'Retiro de ahorro', {size:11, color:'#6B4C3B'});
-    doc.texto(W-M, y, '+' + fmx(item.retiros), {size:11, bold:true, align:'right', numeric:true});
+  function linea(x1, y1, x2, y2, color, g) { doc.setDrawColor(color); doc.setLineWidth(g); doc.line(x1, y1, x2, y2); }
+  function caja(x, yy, w, h, color) { doc.setFillColor(color); doc.rect(x, yy, w, h, 'F'); }
+  // Los dígitos de las fuentes del PDF miden lo mismo: la cifra va de una vez, a la derecha.
+  function cifra(n, xDer, yy, op) {
+    op = op || {};
+    var s = typeof n === 'string' ? n : pdfMonto(n);
+    var neg = s.charAt(0) === '-';
+    fuente(op.f || 'n', op.tam || 9, op.color || (neg ? PDF_COL.neg : PDF_COL.texto));
+    doc.text(s, xDer, yy, {align: 'right'});
   }
-  if (Number(item.cobros) > 0) {
-    y -= 15;
-    doc.texto(M, y, 'Cobro de tanda', {size:11, color:'#6B4C3B'});
-    doc.texto(W-M, y, '+' + fmx(item.cobros), {size:11, bold:true, align:'right', numeric:true});
-  }
-  if (Number(item.cobrosGuardado) > 0) {
-    y -= 15;
-    doc.texto(M, y, 'Del cobro a metas y ahorro', {size:11, color:'#6B4C3B'});
-    doc.texto(W-M, y, fmx(-item.cobrosGuardado), {size:11, bold:true, align:'right', numeric:true});
-  }
-  y -= 18;
-  doc.texto(M, y, 'Salió', {size:11, color:'#6B4C3B'});
-  doc.texto(W-M, y, fmx(item.gasto), {size:11, bold:true, align:'right', numeric:true});
-  y -= 10;
-  doc.linea(M, y, W-M, y, '#F0E9DF', 1);
-  y -= 18;
-  doc.texto(M, y, pos ? 'Te sobró' : 'Te pasaste', {size:12, bold:true});
-  doc.texto(W-M, y, fmx(Math.abs(item.dif)), {size:14, bold:true, align:'right', numeric:true, color: pos?'#4E7A52':'#D9534F'});
-  y -= 34;
 
-  var sobres = (item.sobres || []).filter(function(s){ return s.mto > 0; });
-  doc.texto(M, y, 'DESGLOSE POR SOBRE', {size:10, bold:true, color:'#6B4C3B'});
-  y -= 8;
-  doc.linea(M, y, W-M, y, '#F0E9DF', 1);
-  y -= 18;
-  if (!sobres.length) {
-    doc.texto(M, y, 'Sin gastos registrados', {size:10, color:'#7D5F4E'});
-    y -= 18;
+  function encabezadoPrincipal() {
+    caja(0, 0, PW, 124, PDF_COL.crema);
+    var lh = 72, lw = lh * R.logoW / R.logoH;
+    doc.addImage(R.logo, 'PNG', M - 4, 26, lw, lh);
+    var xt = M + lw + 10;
+    fuente('fr', 19); t('¿A Dónde Se Fue?', xt, 58);
+    fuente('n', 10.5, PDF_COL.sec); t(modelo.nombre, xt, 76);
+    fuente('fr', 17); t(modelo.mes, PW - M, 58, {align: 'right'});
+    if (modelo.cerrado) {
+      fuente('b', 7.5, PDF_COL.verde);
+      var etq = 'ESTADO DE CUENTA FINAL';
+      doc.text(etq, PW - M - (doc.getTextWidth(etq) + etq.length * 0.9), 75, {charSpace: 0.9});
+      fuente('n', 8.5, PDF_COL.sec); t(modelo.periodo, PW - M, 89, {align: 'right'});
+    } else {
+      fuente('b', 8.5, PDF_COL.sec);
+      t('Corte al ' + pdfFechaLarga(modelo.corte) + '  ·  Mes en curso', PW - M, 76, {align: 'right'});
+    }
+    y = 160;
+  }
+  function encabezadoContinua() {
+    fuente('n', 8, PDF_COL.sec);
+    t('¿A Dónde Se Fue?  ·  ' + modelo.nombre + '  ·  ' + modelo.mes + (modelo.cerrado ? '' : ' (mes en curso)'), M, 40);
+    linea(M, 48, PW - M, 48, PDF_COL.fino, 0.5);
+    y = 78;
+  }
+  var alPaginar = null; // repite el título y las columnas de la tabla en curso
+  function asegura(h) {
+    if (y + h <= LIM) return;
+    doc.addPage();
+    encabezadoContinua();
+    if (alPaginar) alPaginar();
+  }
+  function tituloSeccion(txt, cont) {
+    fuente('fr', 11, PDF_COL.verde);
+    t(txt + (cont ? ' (continúa)' : ''), M, y);
+    y += 8; linea(M, y, PW - M, y, PDF_COL.verde, 0.6); y += 16;
+  }
+  function seccion(txt, minH) { alPaginar = null; y += 18; asegura(24 + (minH || 0)); tituloSeccion(txt); }
+  function altoNota(txt) { fuente('n', 8); return txt ? doc.splitTextToSize(pdfLimpio(txt), CW).length * 11 + 8 : 0; }
+  function nota(txt, op) {
+    op = op || {};
+    y += 6; asegura(16);
+    fuente(op.f || 'n', op.tam || 8, op.color || PDF_COL.sec);
+    doc.splitTextToSize(pdfLimpio(txt), CW).forEach(function(l) { asegura(12); doc.text(l, M, y); y += 11; });
+    y += 2;
+  }
+  function encabezadoTabla(cols) {
+    fuente('b', 7, PDF_COL.sec);
+    var x = M;
+    cols.forEach(function(c) {
+      var et = pdfLimpio(c.t).toUpperCase();
+      if (c.al === 'r') doc.text(et, x + c.w - 6 - (doc.getTextWidth(et) + et.length * 0.6), y, {charSpace: 0.6});
+      else doc.text(et, x + 6, y, {charSpace: 0.6});
+      x += c.w;
+    });
+    y += 6; linea(M, y, PW - M, y, PDF_COL.fino, 0.5); y += 4;
+  }
+  // celdas: texto | número (cifra) | {cifra, color, f} | {txt, sub, subAncho, color, f} | {barra, pct}
+  function fila(cols, celdas, alt, h) {
+    h = h || 18;
+    asegura(h);
+    var y0 = y, base = y + 12, x = M;
+    if (alt) caja(M, y, CW, h, PDF_COL.fila);
+    cols.forEach(function(c, i) {
+      var v = celdas[i];
+      if (v === null || v === undefined || v === '') { x += c.w; return; }
+      if (typeof v === 'number') cifra(v, x + c.w - 6, base);
+      else if (v.cifra !== undefined) cifra(v.cifra, x + c.w - 6, base, v);
+      else if (v.barra !== undefined) {
+        var bw = c.w - 52, bx = x + 6, by = base - 5, p = Math.max(0, Math.min(1, v.pct / 100));
+        doc.setFillColor(PDF_COL.pista); doc.roundedRect(bx, by, bw, 5, 2.5, 2.5, 'F');
+        if (p > 0) { doc.setFillColor(v.pct > 100 ? PDF_COL.neg : PDF_COL.salvia); doc.roundedRect(bx, by, Math.max(5, bw * p), 5, 2.5, 2.5, 'F'); }
+        cifra(v.pct + '%', x + c.w - 6, base, {color: v.pct > 100 ? PDF_COL.neg : PDF_COL.sec});
+      } else {
+        var txt = typeof v === 'string' ? v : v.txt;
+        fuente(v.f || 'n', 9, v.color || PDF_COL.texto);
+        if (c.al === 'r') t(txt, x + c.w - 6, base, {align: 'right'});
+        else doc.text(recorta(txt, c.w - 12), x + 6, base);
+        if (typeof v === 'object' && v.sub) { fuente('n', 7.5, PDF_COL.sec); doc.text(recorta(v.sub, v.subAncho || c.w - 12), x + 6, base + 11); }
+      }
+      x += c.w;
+    });
+    y += h;
+    filasDibujadas.push({pag: doc.internal.getNumberOfPages(), y0: y0, y1: y});
+  }
+  // Total: línea sencilla (subtotal) o doble (total final). op.enContra: "Te pasaste" en terracota, sin signo.
+  function filaTotal(cols, celdas, doble, op) {
+    op = op || {};
+    asegura(doble ? 30 : 22);
+    var y0 = y;
+    y += 3;
+    linea(M, y, PW - M, y, doble ? PDF_COL.verde : PDF_COL.texto, doble ? 0.8 : 0.5);
+    if (doble) { y += 2.2; linea(M, y, PW - M, y, PDF_COL.verde, 0.8); }
+    y += doble ? 16 : 13;
+    var col = doble ? (op.enContra ? PDF_COL.neg : PDF_COL.verde) : undefined, x = M;
+    cols.forEach(function(c, i) {
+      var v = celdas[i];
+      if (v === null || v === undefined || v === '') { x += c.w; return; }
+      if (typeof v === 'number') cifra(v, x + c.w - 6, y, {f: doble ? 'fr' : 'b', tam: doble ? 12 : 9, color: col});
+      else { fuente(doble ? 'fr' : 'b', doble ? 12 : 9, col || PDF_COL.texto); doc.text(pdfLimpio(v), x + 6, y); }
+      x += c.w;
+    });
+    y += doble ? 10 : 8;
+    filasDibujadas.push({pag: doc.internal.getNumberOfPages(), y0: y0, y1: y});
+  }
+  function tabla(titulo, cols, filas, totales, notaTxt) {
+    seccion(titulo, 12 + 18 * Math.min(2, filas.length));
+    encabezadoTabla(cols);
+    alPaginar = function() { tituloSeccion(titulo, true); encabezadoTabla(cols); };
+    filas.forEach(function(f, i) {
+      // El último renglón no se separa de su total ni de su nota
+      if (i === filas.length - 1) asegura((f.h || 18) + (totales ? 24 : 0) + altoNota(notaTxt));
+      fila(cols, f.c || f, i % 2 === 1, f.h);
+    });
+    if (totales) filaTotal(cols, totales, false);
+    alPaginar = null;
+    if (notaTxt) nota(notaTxt);
+  }
+  function sinDetalle(titulo) { seccion(titulo, 20); nota('Este mes se cerró antes de que la app guardara este detalle.'); }
+  function falta(clave) { return modelo.faltan.indexOf(clave) !== -1; }
+
+  encabezadoPrincipal();
+
+  // 1. Resumen: Suma / Resta, sin signos. El menos y el terracota, solo en resultados negativos.
+  (function() {
+    var r = modelo.resumen;
+    var cols = [{t: 'Concepto', w: CW - 220}, {t: 'Suma', w: 110, al: 'r'}, {t: 'Resta', w: 110, al: 'r'}];
+    seccion('Resumen', 160);
+    encabezadoTabla(cols);
+    var n = 0;
+    function alt() { n++; return n % 2 === 0; }
+    if (r.arrastre) {
+      if (r.arrastre.neg) fila(cols, [{txt: r.arrastre.l, color: PDF_COL.neg}, '', {cifra: r.arrastre.v, color: PDF_COL.neg}], alt());
+      else fila(cols, [r.arrastre.l, r.arrastre.v, ''], alt());
+    }
+    var sub = r.desglose.length ? r.desglose.map(function(d) { return d.l + ' ' + pdfMonto(d.v); }).join('  ·  ') : '';
+    fila(cols, [{txt: 'Entró', sub: sub, subAncho: CW - 12}, r.entro, ''], alt(), sub ? 28 : 18);
+    r.suma.forEach(function(d) { if (d.v) fila(cols, [d.l, d.v, ''], alt()); });
+    r.resta.forEach(function(d) { if (d.v) fila(cols, [d.l, '', d.v], alt()); });
+    fila(cols, ['Salió', '', r.salio], alt());
+    filaTotal(cols, [r.dif >= 0 ? 'Te sobró' : 'Te pasaste', '', Math.abs(r.dif)], true, {enContra: r.dif < 0});
+
+    // Tu ahorro del mes: informativo; ya está descontado arriba.
+    var ah = r.ahorro;
+    if (ah && (ah.total || ah.usado)) {
+      var cA = [{t: 'Tu ahorro del mes', w: CW - 110}, {t: '', w: 110, al: 'r'}];
+      var partes = [];
+      if (ah.enSalio) partes.push(pdfMonto(ah.enSalio) + ' en Salió');
+      if (ah.directo) partes.push(pdfMonto(ah.directo) + ' en Directo a metas');
+      if (ah.delCobro) partes.push(pdfMonto(ah.delCobro) + ' en Del cobro a metas y ahorro');
+      if (ah.regreso) partes.push(pdfMonto(ah.regreso) + ' que regresaste de un retiro');
+      var ret = r.suma[1].v;
+      var desg = (partes.length ? 'Lo que ahorraste: ' + partes.join(' · ') + '.' : '') +
+        (ret ? ' Lo que retiraste (' + pdfMonto(ret) + ') ya entró en Retiro de ahorro.' : '');
+      y += 14;
+      asegura(12 + 18 * 3 + 24 + 24 + altoNota(desg));
+      encabezadoTabla(cA);
+      fila(cA, ['Ahorraste', ah.total], false);
+      if (ah.usado) {
+        fila(cA, ['Usaste de tu ahorro', ah.usado], true);
+        filaTotal(cA, ['Neto del mes (Ahorraste – Usaste)', ah.neto], false);
+      }
+      nota('Ya está descontado en el Resumen; no lo restes otra vez.', {f: 'b', tam: 8.5, color: PDF_COL.texto});
+      if (desg) { y -= 6; nota(desg, {tam: 7.5}); }
+    }
+    if (modelo.provisiones) nota(modelo.provisiones);
+  })();
+
+  // 2. Detalle por sobre (asignado de ESE mes: base + extra temporal)
+  (function() {
+    var cols = [{t: 'Sobre', w: 160}, {t: 'Asignado', w: 84, al: 'r'}, {t: 'Gastado', w: 84, al: 'r'}, {t: 'Disponible', w: 84, al: 'r'}, {t: '% usado', w: CW - 412}];
+    var ta = 0, tg = 0;
+    var filas = modelo.sobres.map(function(s) {
+      ta += s.asig; tg += s.gast;
+      var pct = s.asig > 0 ? Math.round(s.gast / s.asig * 100) : 0;
+      var sub = s.extra ? 'Base ' + pdfMonto(s.base) + ' + extra del mes ' + pdfMonto(s.extra) : '';
+      return {c: [{txt: s.nom, sub: sub, subAncho: CW - 12}, s.asig, s.gast, r2(s.asig - s.gast), {barra: true, pct: pct}], h: sub ? 28 : 18};
+    });
+    if (!filas.length) { seccion('Detalle por sobre', 20); nota('Sin sobres con límite ni gastos este mes.'); return; }
+    tabla('Detalle por sobre', cols, filas, ['Total', r2(ta), r2(tg), r2(ta - tg), ''],
+      'Asignado: límite guardado de ' + modelo.mesNom + ' (base + extras temporales de ese mes).');
+  })();
+
+  // 3. Apartados y ajustes
+  if (falta('apartados')) sinDetalle('Apartados y ajustes');
+  else if (modelo.apartados.length) (function() {
+    var cols = [{t: 'Servicio', w: 150}, {t: 'Movimiento', w: CW - 260}, {t: 'Monto', w: 110, al: 'r'}];
+    var tot = 0;
+    var filas = modelo.apartados.map(function(a) {
+      if (a.suma) tot += a.signo * a.mto;
+      return {c: [a.serv, {txt: a.mov, sub: a.det}, {cifra: a.mto, color: a.suma ? undefined : PDF_COL.sec}], h: a.det ? 28 : 18};
+    });
+    tabla('Apartados y ajustes', cols, filas, ['Total en el mes', '', r2(tot)],
+      'Lo pagado desde el fondo ya se contó al apartarlo; no vuelve a sumarse en Salió.');
+  })();
+
+  // 4. Movimientos por fecha (solo en el reporte completo)
+  if (modelo.tipo === 'completo' && falta('movs')) sinDetalle('Movimientos por fecha');
+  else if (modelo.tipo === 'completo' && modelo.movs.length) (function() {
+    var cols = [{t: 'Fecha', w: 54}, {t: 'Descripción', w: 196}, {t: 'Sobre', w: 110}, {t: 'Salió', w: 78, al: 'r'}, {t: 'Entró', w: CW - 438, al: 'r'}];
+    var ts = 0;
+    var filas = modelo.movs.map(function(mv) {
+      ts += mv.sale || 0;
+      return [{txt: mv.fecha, color: PDF_COL.sec}, mv.desc, {txt: mv.sobre, color: PDF_COL.sec},
+        mv.sale !== undefined ? mv.sale : '', mv.entra !== undefined ? mv.entra : ''];
+    });
+    tabla('Movimientos por fecha', cols, filas, ['Total', '', '', r2(ts), '']);
+  })();
+
+  // 5. Tarjetas y MSI
+  if (falta('tarjetas')) sinDetalle('Tarjetas y MSI');
+  else {
+    if (modelo.tarjetas.length) (function() {
+      var cols = [{t: 'Tarjeta', w: 190}, {t: 'Saldo', w: 110, al: 'r'}, {t: 'Mínimo', w: 100, al: 'r'}, {t: 'Planeas pagar', w: CW - 400, al: 'r'}];
+      tabla('Tarjetas', cols, modelo.tarjetas.map(function(tc) {
+        var sub = tc.estimada ? 'Tasa estimada a partir de tu CAT' : '';
+        var saldo = tc.saldo < 0 ? {txt: 'Saldo a favor ' + pdfMonto(-tc.saldo), color: PDF_COL.verde, f: 'b'} : tc.saldo;
+        return {c: [{txt: tc.nom, sub: sub}, saldo, tc.minimo, tc.plan], h: sub ? 28 : 18};
+      }), null, 'Mínimo calculado con la regla de Banxico. Cálculo aproximado; incluye IVA de 16% sobre intereses.');
+    })();
+    if (modelo.msi.length) (function() {
+      var cols = [{t: 'Compra a MSI', w: 170}, {t: 'Tarjeta', w: 110}, {t: 'Mensualidad', w: 86, al: 'r'}, {t: 'Pago', w: 60, al: 'r'}, {t: 'Resta', w: CW - 426, al: 'r'}];
+      tabla('Meses sin intereses', cols, modelo.msi.map(function(x) {
+        return [x.desc, {txt: x.tarjeta, color: PDF_COL.sec}, x.mens, {txt: x.n + '/' + x.tot}, x.resta];
+      }));
+    })();
+  }
+
+  // 6. Préstamos
+  if (falta('prestamos')) sinDetalle('Préstamos');
+  else if (modelo.prestamos.length) (function() {
+    var cols = [{t: 'Persona', w: 150}, {t: 'Tipo', w: 110}, {t: 'Desde', w: 90}, {t: 'Estado', w: 76}, {t: 'Monto', w: CW - 426, al: 'r'}];
+    tabla('Préstamos', cols, modelo.prestamos.map(function(p) {
+      return [p.quien, {txt: p.tipo, color: PDF_COL.sec}, {txt: p.desde, color: PDF_COL.sec}, {txt: p.estado, color: p.pagado ? PDF_COL.verde : PDF_COL.texto}, p.mto];
+    }));
+  })();
+
+  // 7. Tandas
+  if (falta('tandas')) sinDetalle('Tandas');
+  else if (modelo.tandas.length) (function() {
+    var cols = [{t: 'Tanda', w: 150}, {t: 'Aportación', w: 90, al: 'r'}, {t: 'Pagos', w: 70, al: 'r'}, {t: 'Cobro', w: CW - 310}];
+    tabla('Tandas', cols, modelo.tandas.map(function(td) {
+      return [td.nom, td.aport, {txt: td.pag + '/' + td.tot}, {txt: td.cobro, color: td.cobrado ? PDF_COL.verde : PDF_COL.texto}];
+    }));
+  })();
+
+  // 8. Metas
+  if (modelo.metas.length) (function() {
+    var cols = [{t: 'Meta', w: 156}, {t: 'Abonos', w: 90, al: 'r'}, {t: 'Retiros', w: 90, al: 'r'}, {t: 'Ya lo usé', w: 90, al: 'r'}, {t: 'Saldo', w: CW - 426, al: 'r'}];
+    tabla('Metas', cols, modelo.metas.map(function(x) {
+      return {c: [{txt: x.nom, sub: x.sub}, x.abonos || '', x.retiros || '', x.usado || '', {cifra: x.saldo, f: 'b'}], h: x.sub ? 28 : 18};
+    }), null, 'Abonos, retiros y "Ya lo usé" de ' + modelo.mesNom + '. Saldo al ' + (modelo.cerrado ? 'cierre del mes.' : 'día del corte.'));
+  })();
+
+  // Pie en todas las páginas
+  var tot = doc.internal.getNumberOfPages();
+  for (var p = 1; p <= tot; p++) {
+    doc.setPage(p);
+    linea(M, PH - 44, PW - M, PH - 44, PDF_COL.fino, 0.5);
+    fuente('n', 7.5, PDF_COL.sec);
+    t('Generado con ¿A Dónde Se Fue?  ·  ' + pdfFechaLarga(modelo.generado), M, PH - 30);
+    t('Página ' + p + ' de ' + tot, PW - M, PH - 30, {align: 'right'});
+  }
+  doc.__filas = filasDibujadas;
+  doc.__lim = LIM;
+  return doc;
+}
+
+// ── Carga de la librería, las fuentes y el logo (archivos locales, en caché del sw) ──
+function bytesABase64(buf) {
+  var b = new Uint8Array(buf), s = '', paso = 0x8000;
+  for (var i = 0; i < b.length; i += paso) s += String.fromCharCode.apply(null, b.subarray(i, i + paso));
+  return btoa(s);
+}
+function cargarRecursosPDF(listo, fallo) {
+  if (_pdfRec && window.jspdf) { listo(_pdfRec); return; }
+  function traer() {
+    Promise.all(['dm400', 'dm600', 'fr600', 'logo'].map(function(k) {
+      return fetch(PDF_RECURSOS[k]).then(function(r) { if (!r.ok) throw new Error(k); return r.arrayBuffer(); });
+    })).then(function(b) {
+      _pdfRec = {dm400: bytesABase64(b[0]), dm600: bytesABase64(b[1]), fr600: bytesABase64(b[2]),
+        logo: 'data:image/png;base64,' + bytesABase64(b[3]), logoW: PDF_RECURSOS.logoW, logoH: PDF_RECURSOS.logoH};
+      listo(_pdfRec);
+    }).catch(fallo);
+  }
+  if (window.jspdf) { traer(); return; }
+  var sc = document.createElement('script');
+  sc.src = PDF_RECURSOS.lib;
+  sc.onload = traer;
+  sc.onerror = fallo;
+  document.head.appendChild(sc);
+}
+
+// ── Flujo: mes → tipo → generar → compartir o descargar ──
+// Meses disponibles: el mes en curso y los de Mi Historia (guarda los últimos 12).
+function mesesReporte() {
+  var act = snapshotMesActual(), lista = [act];
+  (E.historial || []).forEach(function(h) { if (h.anio * 12 + h.mesIdx !== act.anio * 12 + act.mesIdx) lista.push(h); });
+  return lista;
+}
+function dlgElegirMesReporte() {
+  var ms = mesesReporte();
+  dlg({e: '\uD83D\uDCC4', t: '¿De qué mes es el reporte?', s: 'Puedes generar reportes de los últimos 12 meses.',
+    btns: ms.map(function(it, i) {
+      return {l: it.mes + (it.cerrado === false ? ' (mes en curso)' : ''), c: i === 0 ? 'p' : 's', f: function() { dlgTipoReporte(it); }};
+    }).concat([{l: 'Cancelar', c: 's', f: null}])});
+}
+// El resumido es el predeterminado siempre (no se recuerda la última elección).
+function dlgTipoReporte(item) {
+  dlg({e: '\uD83D\uDCC4', t: '¿Qué reporte quieres?', s: item.mes + (item.cerrado === false ? ' · mes en curso' : ''),
+    inf: 'El resumido trae todo menos los movimientos por fecha. El completo también los incluye.',
+    btns: [
+      {l: 'Reporte resumido', c: 'p', f: function() { generarReporte(item, 'resumido'); }},
+      {l: 'Reporte completo', c: 's', f: function() { generarReporte(item, 'completo'); }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]});
+}
+function generarReporte(item, tipo) {
+  toast('Preparando tu reporte…', 8000);
+  cargarRecursosPDF(function(R) {
+    var rep = null;
+    try {
+      var doc = construirPDFReporte(window.jspdf.jsPDF, R, construirModeloReporte(item, tipo));
+      rep = {nombre: nombrePDFReporte(item.mes, tipo), tipo: tipo, mes: item.mes, paginas: doc.internal.getNumberOfPages(),
+        blob: doc.output('blob'), filas: doc.__filas, lim: doc.__lim};
+    } catch (e) {
+      toast('No se pudo generar el reporte. Intenta de nuevo.');
+      return;
+    }
+    window._ultimoReporte = rep;
+    toast('Tu reporte está listo', 1200);
+    dlgReporteListo(rep, item);
+  }, function() { toast('No se pudo preparar el reporte. Revisa tu conexión e intenta de nuevo.'); });
+}
+// Segundo paso: compartir va en su propio toque (el teléfono solo deja
+// compartir un archivo justo después de que la usuaria toca un botón).
+function dlgReporteListo(rep, item) {
+  dlg({e: '\u2705', t: 'Tu reporte está listo', s: rep.nombre + ' · ' + rep.paginas + (rep.paginas === 1 ? ' página' : ' páginas'),
+    btns: [
+      {l: 'Compartir', c: 'p', f: function() { compartirReporte(rep); }},
+      {l: 'Descargar', c: 's', f: function() { descargarReporte(rep); }},
+      {l: 'Enviar resumen por WhatsApp (texto)', c: 's', f: function() { compartirCierreTextoPlano(item); }},
+      {l: 'Cerrar', c: 's', f: null}
+    ]});
+}
+function compartirReporte(rep) {
+  var archivo = null;
+  try { archivo = new File([rep.blob], rep.nombre, {type: 'application/pdf'}); } catch (e) {}
+  if (archivo && navigator.share && navigator.canShare && navigator.canShare({files: [archivo]})) {
+    navigator.share({files: [archivo], title: rep.nombre})
+      .then(function() { toast('Reporte compartido'); })
+      .catch(function(err) { if (err && err.name === 'AbortError') return; descargarReporte(rep); });
   } else {
-    sobres.forEach(function(s, idx) {
-      if (idx % 2 === 0) doc.rect(M-4, y-4, (W-2*M)+8, 16, '#FAF6F0');
-      doc.texto(M, y, s.nom, {size:10});
-      doc.texto(W-M-70, y, fmx(s.mto), {size:10, bold:true, align:'right', numeric:true});
-      var lim = (s.lim !== undefined ? Number(s.lim) : E.lims[s.id]) || 0; // límite de ESE mes
-      var pct = lim > 0 ? Math.round(s.mto/lim*100) : null;
-      doc.texto(W-M, y, pct != null ? pct+'%' : '—', {size:10, color:'#7D5F4E', align:'right', numeric: pct != null});
-      y -= 18;
-    });
+    // Navegadores que no comparten archivos (casi todos los de computadora): se descarga.
+    descargarReporte(rep);
   }
-  y -= 12;
-
-  var metas = (item.metas || []).filter(function(m){ return (m.act||0) > 0; });
-  if (metas.length) {
-    doc.texto(M, y, 'MIS METAS', {size:10, bold:true, color:'#6B4C3B'});
-    y -= 8;
-    doc.linea(M, y, W-M, y, '#F0E9DF', 1);
-    y -= 18;
-    metas.forEach(function(m, idx) {
-      if (idx % 2 === 0) doc.rect(M-4, y-4, (W-2*M)+8, 16, '#FAF6F0');
-      doc.texto(M, y, m.nom, {size:10});
-      var pct2 = m.meta > 0 ? Math.round((m.act||0)/m.meta*100) : 0;
-      doc.texto(W-M-70, y, fmx(m.act||0) + ' / ' + fmx(m.meta), {size:10, bold:true, color:'#4E7A52', align:'right'});
-      doc.texto(W-M, y, pct2+'%', {size:10, color:'#7D5F4E', align:'right', numeric:true});
-      y -= 18;
-    });
-    y -= 12;
-  }
-
-  doc.linea(M, y, W-M, y, '#F0E9DF', 1);
-  y -= 16;
-  doc.texto(M, y, 'Racha: ' + (item.racha||0) + ' días  ·  Generado con ¿A Dónde Se Fue?', {size:9, color:'#7D5F4E'});
-
-  return doc.bytes();
 }
-function nombreArchivoPDF(item) {
-  return 'Reporte ' + String(item.mes||'').replace(/\s+/g,'-') + '.pdf';
+function descargarReporte(rep) {
+  var url = URL.createObjectURL(rep.blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = rep.nombre;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 4000);
+  toast('Reporte descargado: ' + rep.nombre);
 }
 
 // ── COMPARTIR CIERRE MENSUAL — WhatsApp ───────────
 function textoCierre(item) {
   var pos = item.dif >= 0;
+  var EI = entradaDe(item);
 
   // Tabla de sobres completa
   var sobresLineas = (item.sobres || [])
@@ -6399,8 +6699,9 @@ function textoCierre(item) {
   return '💰 *¿A Dónde Se Fue?* — ' + tituloCaja + '\n' +
     (esCerrado ? '' : '📌 _Corte parcial — el mes sigue abierto_\n') +
     '\n' +
-    'Entró: ' + fmx(entroMostrado(item)) + '\n' +
-    (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item)) ? '   (' + desgloseEntro(item.ing, item.arr, extItem(item)) + ')\n' : '') +
+    (EI.arr ? EI.arr.l + ': ' + fmx(EI.arr.v) + '\n' : '') +
+    'Entró: ' + fmx(EI.entro) + '\n' +
+    (EI.desg ? '   (' + EI.desg + ')\n' : '') +
     (Number(item.directoMetas) > 0 ? 'Directo a metas: ' + fmx(-item.directoMetas) + '\n' : '') +
     (Number(item.retiros) > 0 ? 'Retiro de ahorro: +' + fmx(item.retiros) + '\n' : '') +
     (Number(item.cobros) > 0 ? 'Cobro de tanda: +' + fmx(item.cobros) + '\n' : '') +
@@ -6417,39 +6718,9 @@ function textoCierre(item) {
     '_Generado con ¿A Dónde Se Fue?_';
 }
 
-// Texto corto para acompañar el PDF cuando se comparte como archivo adjunto
-// (WhatsApp/otras apps) — el detalle completo va en el PDF, no hace falta
-// repetirlo en el mensaje.
-function captionCierre(item) {
-  var pos = item.dif >= 0;
-  var esCerrado = item.cerrado !== false;
-  var tituloCaja = esCerrado ? 'Cierre de ' + item.mes : 'Corte de ' + item.mes;
-  return '💰 *¿A Dónde Se Fue?* — ' + tituloCaja + '\n' +
-    (pos ? '✅ Te sobraron ' + fmx(item.dif) : '⚠️ Te pasaste ' + fmx(Math.abs(item.dif))) + ' este periodo.\n' +
-    '📎 Reporte completo en el PDF adjunto.';
-}
-
-function compartirCierre(item) {
-  cerrarDlg();
-  var bytes = construirReportePDF(item);
-  var archivo = null;
-  try { archivo = new File([bytes], nombreArchivoPDF(item), {type:'application/pdf'}); } catch(e) {}
-  if (archivo && navigator.share && navigator.canShare && navigator.canShare({files:[archivo]})) {
-    navigator.share({files:[archivo], title:'¿A Dónde Se Fue?', text: captionCierre(item)})
-      .then(function() { toast('¡Reporte compartido! 📄'); })
-      .catch(function(err) {
-        if (err && err.name === 'AbortError') return; // la usuaria canceló el share sheet
-        compartirCierreTextoPlano(item);
-      });
-  } else {
-    compartirCierreTextoPlano(item);
-  }
-}
-// Fallback cuando el navegador no soporta adjuntar archivos vía Web Share
-// (la mayoría de navegadores de escritorio) — manda el texto por wa.me y
-// sugiere descargar el PDF aparte para adjuntarlo a mano.
+// Resumen de texto por WhatsApp (opción secundaria al reporte PDF).
 function compartirCierreTextoPlano(item) {
-  var texto = textoCierre(item) + '\n\n_Tip: descarga el PDF del reporte y adjúntalo aquí mismo 📎_';
+  var texto = textoCierre(item) + '\n\n_El reporte completo en PDF se genera en la app (Reportes \u203A Generar reporte)._';
   window.location.href = 'https://wa.me/?text=' + encodeURIComponent(texto);
   toast('Abriendo WhatsApp 💬');
 }
@@ -6483,89 +6754,6 @@ function copiarTextoCierre(item) {
   copiarTexto(textoCierre(item), 'Resumen copiado — pégalo donde quieras 📋');
 }
 
-// ── DESCARGAR PDF DEL CIERRE (vía diálogo de impresión) ──
-function descargarPDFCierre(item) {
-  var bytes = construirReportePDF(item);
-  var blob = new Blob([bytes], {type:'application/pdf'});
-  var url = URL.createObjectURL(blob);
-  var a = document.createElement('a');
-  a.href = url; a.download = nombreArchivoPDF(item);
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(function() { URL.revokeObjectURL(url); }, 4000);
-  toast('PDF descargado 📄');
-}
-
-
-function enviarCorreoCierre(item) {
-  cerrarDlg();
-  var pos = item.dif >= 0;
-  var nom = E.perfil.nom || 'Amiga';
-  var esCerrado = item.cerrado !== false;
-  var lineaPeriodo = esCerrado
-    ? 'Aquí está tu cierre de ' + item.mes + ':'
-    : 'Aquí está tu corte parcial de ' + item.mes + ' (el mes sigue abierto):';
-
-  var sobresHTML = (item.sobres || [])
-    .filter(function(s) { return s.mto > 0; })
-    .map(function(s) {
-      var lim = E.lims[s.id] || 0;
-      var pct = lim > 0 ? Math.round(s.mto/lim*100) : 0;
-      var color = pct > 100 ? '#D9534F' : pct > 85 ? '#C4704F' : '#4E7A52';
-      return '<tr style="border-bottom:1px solid #F0E9DF">' +
-        '<td style="padding:8px 4px">' + s.ico + ' ' + s.nom + '</td>' +
-        '<td style="padding:8px 4px;text-align:right;font-weight:600">' + fmx(s.mto) + '</td>' +
-        (lim > 0
-          ? '<td style="padding:8px 4px;text-align:right;color:' + color + '">' + pct + '%</td>'
-          : '<td></td>') +
-        '</tr>';
-    }).join('');
-
-  var metasHTML = (item.metas || [])
-    .filter(function(m) { return (m.act||0) > 0; })
-    .map(function(m) {
-      var pct = m.meta > 0 ? Math.round((m.act||0)/m.meta*100) : 0;
-      return '<tr style="border-bottom:1px solid #F0E9DF">' +
-        '<td style="padding:8px 4px">' + m.ico + ' ' + m.nom + '</td>' +
-        '<td style="padding:8px 4px;text-align:right;font-weight:600;color:#4E7A52">' + fmx(m.act||0) + '</td>' +
-        '<td style="padding:8px 4px;text-align:right;color:#7D5F4E">' + pct + '%</td>' +
-        '</tr>';
-    }).join('');
-
-  var cuerpo =
-    'Hola ' + nom + ' 🌸\n\n' +
-    lineaPeriodo + '\n\n' +
-    '━━━━━━━━━━━━━━━━━━━━\n' +
-    'RESUMEN DEL MES\n' +
-    '━━━━━━━━━━━━━━━━━━━━\n' +
-    'Entró:  ' + fmx(entroMostrado(item)) + '\n' +
-    (Number(item.directoMetas) > 0 ? 'Directo a metas:  ' + fmx(-item.directoMetas) + '\n' : '') +
-    (Number(item.retiros) > 0 ? 'Retiro de ahorro:  +' + fmx(item.retiros) + '\n' : '') +
-    (Number(item.cobros) > 0 ? 'Cobro de tanda:  +' + fmx(item.cobros) + '\n' : '') +
-    (Number(item.cobrosGuardado) > 0 ? 'Del cobro a metas y ahorro:  ' + fmx(-item.cobrosGuardado) + '\n' : '') +
-    'Salió:  ' + fmx(item.gasto) + '\n' +
-    (pos
-      ? 'Sobró:  ' + fmx(item.dif) + ' ✅'
-      : 'Pasé:   ' + fmx(Math.abs(item.dif)) + ' ⚠️') + '\n\n' +
-    'DESGLOSE POR SOBRE\n' +
-    '━━━━━━━━━━━━━━━━━━━━\n' +
-    (item.sobres || []).filter(function(s){return s.mto>0;})
-      .map(function(s){return s.ico + ' ' + s.nom + ': ' + fmx(s.mto);}).join('\n') + '\n\n' +
-    (metasHTML
-      ? 'MIS METAS\n━━━━━━━━━━━━━━━━━━━━\n' +
-        (item.metas||[]).filter(function(m){return (m.act||0)>0;})
-          .map(function(m){return m.ico+' '+m.nom+': '+fmx(m.act||0)+' de '+fmx(m.meta);}).join('\n') + '\n\n'
-      : '') +
-    'Racha: ' + (item.racha||0) + ' días 🔥\n\n' +
-    'Generado con ¿A Dónde Se Fue? 📱';
-
-  var asunto = '¿A Dónde Se Fue? — ' + (esCerrado ? 'Cierre de ' : 'Corte parcial de ') + item.mes;
-  var mailtoUrl = 'mailto:?subject=' + encodeURIComponent(asunto) +
-    '&body=' + encodeURIComponent(cuerpo);
-
-  window.location.href = mailtoUrl;
-  toast('Abriendo correo 📧');
-}
-
 // ── COMPARTIR MES ACTUAL EN WHATSAPP ─────────────
 // Disponible del mes en curso — misma fórmula que confirmarCierre()/
 // prepararCierre() (incluye arrastre del mes anterior e ingresos extra ya
@@ -6578,19 +6766,46 @@ function calcDisponibleMes() {
   var extraMes = Number(E.ingresoExtraMes) || 0;
   return r2(mtoBase + arrastre + extraMes + retirosMes() + cobrosMes().ef);
 }
-// Desglose de "Entró": "Ingreso $10,000 · Arrastre +$1,500 · Extra $2,000".
-// Vacío si solo hay ingreso (no aporta nada).
-function desgloseEntro(ing, arr, ext) {
-  var partes = ['Ingreso ' + fmx(ing)];
-  if (Number(arr)) partes.push('Arrastre ' + (arr > 0 ? '+' : '') + fmx(arr));
-  if (Number(ext)) partes.push('Extra ' + fmx(ext));
-  return partes.length > 1 ? partes.join(' \u00B7 ') : '';
+// ── "EMPEZASTE CON" Y "ENTRÓ" (Bloque 8) ──
+// El arrastre no es ingreso: va en su propio renglón, al inicio.
+// Sobrante del mes anterior: "Empezaste con (de septiembre) $1,250.50".
+// Déficit: "Te faltó en septiembre $800", sin signo (en terracota donde hay color).
+// "Entró" = ingreso + ingreso extra (incluye lo que fue directo a metas).
+// Inicio, Reportes, Cierre, texto, Mi Historia y PDF usan estas funciones.
+function mesAnteriorNom(mesIdx) { return MESES_NOM[((Number(mesIdx) || 0) + 11) % 12].toLowerCase(); }
+function arrastreDe(arr, mesIdx) {
+  arr = r2(Number(arr) || 0);
+  if (!arr) return null;
+  var m = mesAnteriorNom(mesIdx);
+  return arr > 0 ? {l: 'Empezaste con (de ' + m + ')', v: arr, neg: false} : {l: 'Te faltó en ' + m, v: -arr, neg: true};
 }
-function desgloseEntroActual() {
-  var t = desgloseEntro(E.perfil.mto || 0, E.saldoArrastrado || 0, r2((Number(E.ingresoExtraMes) || 0) + directoMetasMes()));
+// "Ingreso $10,000 · Extra $2,000" (vacío si no hubo ingreso extra).
+function desgloseEntro(ing, ext) {
+  return Number(ext) ? 'Ingreso ' + fmx(ing) + ' · Extra ' + fmx(ext) : '';
+}
+// De un mes de Mi Historia o de un corte. Los cierres viejos sin desglose se
+// quedan como estaban: Entró con todo y sin renglón de arrastre.
+function entradaDe(item) {
+  if (item.ing === undefined) return {arr: null, entro: entroMostrado(item), desg: '', ing: null, ext: 0};
+  var ext = extItem(item);
+  return {arr: arrastreDe(item.arr, item.mesIdx), entro: r2((Number(item.ing) || 0) + ext), desg: desgloseEntro(item.ing, ext),
+    ing: Number(item.ing) || 0, ext: ext};
+}
+// Del mes en curso (Inicio, Reportes y Cierre).
+function entradaActual() {
+  var ext = r2((Number(E.ingresoExtraMes) || 0) + directoMetasMes());
+  var a = arrastreDe(E.saldoArrastrado, ymNum(periodoActual()) % 12);
   var ra = retiroArrastradoEfectivo();
-  if (t && ra > 0) t = t.replace('Arrastre +' + fmx(E.saldoArrastrado), 'Arrastre +' + fmx(E.saldoArrastrado) + ' (incluye ' + fmx(ra) + ' de retiro de ahorro)');
-  return t;
+  if (a && !a.neg && ra > 0) a.nota = 'incluye ' + fmx(ra) + ' de retiro de ahorro';
+  return {arr: a, entro: r2((Number(E.perfil.mto) || 0) + ext), desg: desgloseEntro(E.perfil.mto || 0, ext)};
+}
+function txtArrastre(a) { return a ? a.l + ' ' + fmx(a.v) + (a.nota ? ' (' + a.nota + ')' : '') : ''; }
+function mostrarArrastre(elId, a, conColor) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = txtArrastre(a);
+  el.style.display = a ? 'block' : 'none';
+  if (conColor) el.style.color = a && a.neg ? '#C4704F' : '';
 }
 // ── Directo a metas ──
 // La parte de un ingreso extra que va directo a una meta sí entró este mes:
@@ -6697,9 +6912,10 @@ function ahorroDeHistoria(h) {
   (h.sobres||[]).forEach(function(x) { if (x.id === 'ahorro') t += Number(x.mto) || 0; });
   return r2(t);
 }
-function compartirWhatsApp() {
+function snapshotMesActual() {
   var hoy = new Date();
-  var nPerW = ymNum(periodoActual());
+  var ymW = periodoActual(), nPerW = ymNum(ymW);
+  var regsW = E.regs.filter(function(r) { return periodoDe(r) === ymW; });
   var mto = calcDisponibleMes();
   var gasto = calcGT();
   var ahW = ahorroMesActual();
@@ -6726,8 +6942,16 @@ function compartirWhatsApp() {
     }),
     racha: (E.gamif && E.gamif.racha) || 0
   };
-  dlgOpcionesEnvio(snapshot);
+  if (ahW.usado > 0) { snapshot.usado = ahW.usado; snapshot.neto = ahW.neto; }
+  snapshot.ahorroEnSalio = ahorroEnSalioDe(regsW);
+  snapshot.ahorroRegreso = ahorroRegresoDe(regsW);
+  var provW = provisionesMes(regsW, ymW);
+  if (txtProvisiones(provW)) snapshot.provisiones = provW;
+  snapshot.det = detalleMes(regsW, ymW);
+  snapshot.det.ing = snapshot.ing; snapshot.det.arr = snapshot.arr; snapshot.det.ext = snapshot.ext; snapshot.det.directo = snapshot.directoMetas;
+  return snapshot;
 }
+function compartirWhatsApp() { dlgOpcionesEnvio(snapshotMesActual()); }
 
 // ── BANNER CIERRE EN INICIO ───────────────────────
 function chkBannerCierre() {
@@ -6804,10 +7028,14 @@ function renderHistoria() {
       '</div>' +
       '<div class="historia-body" id="hbody-'+idx+'">' +
         '<div style="height:10px"></div>' +
+        (R.arrastre
+          ? '<div class="historia-dato"><span class="historia-dato-lbl"' + (R.arrastre.neg ? ' style="color:#C4704F"' : '') + '>' + R.arrastre.l + '</span>' +
+            '<span class="historia-dato-val"' + (R.arrastre.neg ? ' style="color:#C4704F"' : '') + '>' + fmx(R.arrastre.v) + '</span></div>' : '') +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">💰 Entró</span>' +
           '<span class="historia-dato-val pos">' + fmx(R.entro) + '</span>' +
         '</div>' +
+        (R.desgTxt ? '<div style="font-size:11px;color:#7D5F4E;margin:-2px 0 4px">' + R.desgTxt + '</div>' : '') +
         (R.resta[0].v > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83C\uDFAF Directo a metas</span>' +
             '<span class="historia-dato-val">' + fmx(-R.resta[0].v) + '</span></div>' : '') +
@@ -6824,8 +7052,6 @@ function renderHistoria() {
           '<span class="historia-dato-lbl">📤 Salió</span>' +
           '<span class="historia-dato-val g" style="color:#C4704F">' + fmx(R.salio) + '</span>' +
         '</div>' +
-        (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item))
-          ? '<div style="font-size:11px;color:#7D5F4E;margin:-2px 0 4px">' + desgloseEntro(item.ing, item.arr, extItem(item)) + '</div>' : '') +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">' + (pos?'✅ Sobró':'⚠️ Se pasó') + '</span>' +
           '<span class="historia-dato-val ' + (pos?'pos':'neg') + '">' + fmx(Math.abs(R.dif)) + '</span>' +
@@ -6870,14 +7096,13 @@ function compartirHistoria(idx) {
   var item = (E.historial||[])[idx];
   if (!item) return;
   dlg({
-    e: '📤', t: 'Enviar resumen',
+    e: '\uD83D\uDCE4', t: 'Enviar resumen',
     s: item.mes + ' — ¿cómo quieres compartirlo?',
     btns: [
-      {l: '💬 WhatsApp', c: 'p', f: function() { cerrarDlg(); compartirCierre(item); }},
-      {l: '📧 Correo', c: 's', f: function() { enviarCorreoCierre(item); }},
-      {l: '📋 Copiar texto', c: 's', f: function() { copiarTextoCierre(item); }},
-      {l: '📄 Descargar PDF', c: 's', f: function() { cerrarDlg(); descargarPDFCierre(item); }},
-      {l: 'Cancelar', c: 's', f: cerrarDlg}
+      {l: '\uD83D\uDCC4 Generar reporte PDF', c: 'p', f: function() { dlgTipoReporte(item); }},
+      {l: '\uD83D\uDCAC Resumen por WhatsApp (texto)', c: 's', f: function() { compartirCierreTextoPlano(item); }},
+      {l: '\uD83D\uDCCB Copiar texto', c: 's', f: function() { copiarTextoCierre(item); }},
+      {l: 'Cancelar', c: 's', f: null}
     ]
   });
 }
