@@ -1738,6 +1738,11 @@ function restProcesar() {
     var caK = CAMPOS_ARRAY[caIdx];
     if (parsed.hasOwnProperty(caK) && !Array.isArray(parsed[caK])) delete parsed[caK];
   }
+  // Copia del detalle de un mes cerrado (Bloque 8): si viene dañada se quita y
+  // el reporte de ese mes sale como mes cerrado antes de guardar el detalle.
+  if (Array.isArray(parsed.historial)) {
+    parsed.historial.forEach(function(h) { if (h && typeof h === 'object' && h.det !== undefined && !detValido(h.det)) delete h.det; });
+  }
   var CAMPOS_OBJETO = ['perfil','pr','lims','limsExtraMes','subsCB','gamif'];
   for (var coIdx = 0; coIdx < CAMPOS_OBJETO.length; coIdx++) {
     var coK = CAMPOS_OBJETO[coIdx];
@@ -5742,9 +5747,17 @@ function archivarMes(mesIdx, anio, mto) {
   if (ah.usado > 0) { snapshot.usado = ah.usado; snapshot.neto = ah.neto; }
   var prov = provisionesMes(regsDeMes(mesIdx, anio), ym);
   if (txtProvisiones(prov)) snapshot.provisiones = prov;
+  // Bloque 8: lo ahorrado que ya está dentro de Salió (sobre de Ahorro y abonos
+  // desde los sobres) y lo que regresó de un retiro, para explicarlo en el reporte.
+  var enSalioA = ahorroEnSalioDe(regsDeMes(mesIdx, anio)), regresoA = ahorroRegresoDe(regsDeMes(mesIdx, anio));
+  if (enSalioA > 0) snapshot.ahorroEnSalio = enSalioA;
+  if (regresoA > 0) snapshot.ahorroRegreso = regresoA;
+  // Copia congelada del mes para el reporte PDF (se toma antes de borrar sus registros).
+  snapshot.det = detalleMes(regsDeMes(mesIdx, anio), ym);
   // Desglose de "Entró" (los callers archivan antes de limpiar arrastre y extra)
   var dIng = Number(E.perfil.mto) || 0, dArr = Number(E.saldoArrastrado) || 0, dExt = Number(E.ingresoExtraMes) || 0;
   if (r2(dIng + dArr + dExt) === r2(mto - retA - cobA.ef)) { snapshot.ing = dIng; snapshot.arr = dArr; snapshot.ext = dExt; }
+  snapshot.det.ing = r2(dIng); snapshot.det.arr = r2(dArr); snapshot.det.ext = r2(dExt); snapshot.det.directo = dmA;
   ahorroAcumInit(); // antes de agregar este mes a Mi Historia
   E.ahorroAcum = r2(E.ahorroAcum + ah.enSobre);
   if (!E.historial) E.historial = [];
@@ -5753,6 +5766,172 @@ function archivarMes(mesIdx, anio, mto) {
   E.regs = E.regs.filter(function(r) { return periodoDe(r) !== ym; });
   if (isNaN(ymNum(E.mesCerrado)) || ymNum(E.mesCerrado) < ymNum(ym)) E.mesCerrado = ym;
   return snapshot;
+}
+
+// ── DETALLE DEL MES PARA EL REPORTE (Bloque 8) ──
+// Al cerrar un mes se guarda en Mi Historia una copia de su detalle (item.det):
+// ingreso, arrastre e ingreso extra por separado (ing, arr, ext, directo), movimientos, sobres, apartados, tarjetas, MSI, préstamos, tandas y metas, con
+// los nombres y montos de ese momento. Queda congelada: el reporte de un mes
+// cerrado lee solo esta copia, nunca los datos de hoy. Mi Historia guarda los
+// últimos 12 meses; al entrar el 13 se borra el más viejo con su copia.
+var DET_VERSION = 1;
+var DET_LISTAS = ['movs', 'sobres', 'apartados', 'tarjetas', 'msi', 'prestamos', 'tandas', 'metas'];
+function detValido(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
+  for (var i = 0; i < DET_LISTAS.length; i++) if (!Array.isArray(d[DET_LISTAS[i]])) return false;
+  return true;
+}
+function diaIso(f) {
+  var d = new Date(f);
+  if (isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+function porFecha(a, b) { return a.f < b.f ? -1 : a.f > b.f ? 1 : 0; }
+// Ahorro que ya está dentro de Salió (mismo criterio que calcAhorro()).
+function ahorroEnSalioDe(regs) {
+  var t = 0;
+  regs.forEach(function(r) {
+    if (r.sobre === 'extra') return;
+    var a = abonoMetaDe(r);
+    if (a > 0) t += a; else if (r.sobre === 'ahorro') t += Number(r.mto) || 0;
+  });
+  return r2(t);
+}
+function ahorroRegresoDe(regs) {
+  return r2(regs.reduce(function(t, r) { return t + (r.sobre === 'extra' && r.sub === 'regreso' ? Number(r.regreso) || 0 : 0); }, 0));
+}
+// Movimientos por fecha. Gastos: s/sn (sobre), cn (categoría), m (monto).
+// Entradas y movimientos de ahorro: t (ingreso | cobro | retiro | usado | regreso), e (monto).
+function detMovs(regs) {
+  var out = [];
+  regs.forEach(function(r) {
+    var mv = {f: diaIso(r.fecha), n: String(r.nota || '')};
+    if (r.sobre === 'extra') {
+      var x = r.sub === 'ingreso' ? r.ingreso : r.sub === 'cobro' ? r.cobro : r.sub === 'retiro' ? retiroEfectivo(r)
+        : r.sub === 'usado' ? r.usado : r.sub === 'regreso' ? r.regreso : 0;
+      mv.t = String(r.sub || '');
+      mv.e = r2(Number(x) || 0);
+      if (r.metaNom) mv.meta = r.metaNom;
+      if (r.sub === 'cobro') {
+        var td = getTandas().filter(function(t) { return t.id === r.tandaId; })[0];
+        if (td) mv.tanda = td.nom;
+      }
+    } else {
+      var existe = todosSobres().some(function(x) { return x.id === r.sobre; });
+      var sub = subsDeSobre(r.sobre).filter(function(x) { return x.id === r.sub; })[0];
+      mv.s = String(r.sobre || '');
+      mv.sn = existe ? nombreSobreId(r.sobre) : SOBRE_ELIMINADO.cor;
+      mv.cn = sub ? sub.nom : '';
+      mv.m = r2(Number(r.mto) || 0);
+    }
+    out.push(mv);
+  });
+  return out.sort(porFecha);
+}
+// Sobres con lo asignado de ESE mes (base + extra temporal) y lo gastado.
+function detSobres(regs) {
+  return sobresYEliminado().map(function(sb) {
+    var g = r2(regs.filter(function(r) { return esDeSobre(r, sb.id); }).reduce(function(t, r) { return t + (Number(r.mto) || 0); }, 0));
+    var base = Number(E.lims && E.lims[sb.id]) || 0;
+    var extra = Number(E.limsExtraMes && E.limsExtraMes[sb.id]) || 0;
+    return {id: sb.id, nom: sb.cor, base: r2(base), extra: r2(extra), gast: g};
+  }).filter(function(x) { return x.base || x.extra || x.gast; });
+}
+// Apartados, ajustes por recibo real, fondo liberado y pagos de cada servicio.
+function detApartados(regs, ym) {
+  function nomSrv(id) {
+    var sv = (E.servicios || []).filter(function(x) { return x.id === id; })[0];
+    return sv ? sv.nom : 'Servicio';
+  }
+  var out = [];
+  regs.forEach(function(r) {
+    var t = r.origen && r.origen.tipo;
+    if (t === 'apartado' || t === 'ajusteRecibo' || t === 'fondoLiberado')
+      out.push({f: diaIso(r.fecha), serv: nomSrv(r.origen.id), t: t, m: r2(Number(r.mto) || 0)});
+  });
+  (E.servicios || []).forEach(function(sv) {
+    (sv.pagos || []).forEach(function(pg) {
+      if (pg.periodo === ym) out.push({f: diaIso(pg.fecha), serv: sv.nom, t: 'pago', m: r2(Number(pg.mto) || 0), fondo: r2(Number(pg.fondo) || 0)});
+    });
+  });
+  return out.sort(porFecha);
+}
+function detTarjetas() {
+  return getTarjetas().map(function(t) {
+    var saldo = Number(t.saldo) || 0;
+    return {nom: t.nom, saldo: r2(saldo), limite: Number(t.limite) || 0, min: minimoTC(Math.max(0, saldo), tasaTC(t), t.limite),
+      plan: pagoPlanTC(t), est: tasaEstimadaTC(t)};
+  });
+}
+function detMSI() {
+  return getMSI().map(function(m) {
+    var tc = getTarjetas().filter(function(t) { return t.id === m.tarjetaId; })[0];
+    var n = Number(m.mesesPagados) || 0, tot = Number(m.meses) || 0, base = r2(m.pagoMensual);
+    var resta = n >= tot ? 0 : (Number(m.precioTotal) ? r2(Number(m.precioTotal) - base * n) : r2(base * (tot - n)));
+    return {nom: m.nom, tc: tc ? tc.nom : '', mens: pagoMSI(m), n: n, tot: tot, resta: Math.max(0, resta)};
+  });
+}
+function detPrestamos() {
+  var pr = getPr(), out = [];
+  ['me', 'yo'].forEach(function(tipo) {
+    pr[tipo].forEach(function(x) {
+      out.push({tipo: tipo, q: x.q, pa: x.pa || '', fecha: x.fecha || '', st: x.st, mto: r2(Number(x.mto) || 0)});
+    });
+  });
+  return out;
+}
+function detTandas(regs, ym) {
+  return getTandas().map(function(t) {
+    var pgs = t.pgs || [], cobro = 0, fCobro = '';
+    regs.forEach(function(r) {
+      if (r.sobre === 'extra' && r.sub === 'cobro' && r.tandaId === t.id) { cobro += Number(r.cobro) || 0; fCobro = diaIso(r.fecha); }
+    });
+    return {nom: t.nom, mto: Number(t.mto) || 0, part: Number(t.part) || 0, turno: Number(t.turno) || 0, per: t.periodo || '',
+      pagos: pgs.length, pagosMes: pgs.filter(function(pg) { return pg.periodo === ym; }).length, cobro: r2(cobro), fCobro: fCobro};
+  });
+}
+// Metas: abonos, retiros y "Ya lo usé" de ESE mes y el saldo al final de ese mes.
+function detMetas(ym) {
+  var n = ymNum(ym);
+  return getMetas().map(function(m) {
+    var ab = 0, ret = 0, us = 0, despues = 0;
+    (m.movs || []).forEach(function(mv) {
+      if (mv.deshecho) return;
+      var x = Number(mv.mto) || 0, sale = movSale(mv);
+      var pn = ymNum(mv.periodo);
+      if (pn > n) { despues += sale ? -x : x; return; }
+      if (mv.periodo !== ym || mv.tipo === 'inicial') return;
+      if (mv.tipo === 'usado') us += x; else if (sale) ret += x; else ab += x;
+    });
+    return {nom: m.nom, meta: Number(m.meta) || 0, ab: r2(ab), ret: r2(ret), us: r2(us), saldo: r2((Number(m.actual) || 0) - despues)};
+  });
+}
+function detalleMes(regs, ym) {
+  return {v: DET_VERSION, ym: ym, movs: detMovs(regs), sobres: detSobres(regs), apartados: detApartados(regs, ym),
+    tarjetas: detTarjetas(), msi: detMSI(), prestamos: detPrestamos(), tandas: detTandas(regs, ym), metas: detMetas(ym)};
+}
+
+// Resumen de un mes: los renglones y números de Mi Historia (y del reporte PDF).
+// Suma: Entró, Cobro de tanda, Retiro de ahorro. Resta: Directo a metas, Del
+// cobro a metas y ahorro, Salió. Te sobró = suma − resta (= item.dif).
+// "Tu ahorro del mes" es informativo: ya está incluido arriba (en Salió, en
+// Directo a metas y en Del cobro a metas y ahorro) y no se resta otra vez.
+function resumenDe(item) {
+  var dm = Number(item.directoMetas) || 0, cg = Number(item.cobrosGuardado) || 0;
+  var r = {entro: entroMostrado(item), desglose: [],
+    suma: [{l: 'Cobro de tanda', v: Number(item.cobros) || 0}, {l: 'Retiro de ahorro', v: Number(item.retiros) || 0}],
+    resta: [{l: 'Directo a metas', v: dm}, {l: 'Del cobro a metas y ahorro', v: cg}],
+    salio: Number(item.gasto) || 0, dif: Number(item.dif) || 0};
+  if (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item))) {
+    var mesAnt = typeof item.mesIdx === 'number' ? MESES_NOM[(item.mesIdx + 11) % 12].toLowerCase() : '';
+    r.desglose = [{l: 'Ingreso', v: Number(item.ing) || 0}, {l: 'Arrastre' + (mesAnt ? ' de ' + mesAnt : ''), v: Number(item.arr) || 0},
+      {l: 'Ingreso extra', v: extItem(item)}].filter(function(d) { return d.v; });
+  }
+  var tot = ahorroDeHistoria(item), usado = Number(item.usado) || 0, reg = Number(item.ahorroRegreso) || 0;
+  var enSalio = item.ahorroEnSalio !== undefined ? Number(item.ahorroEnSalio) || 0 : Math.max(0, r2(tot - dm - cg - reg));
+  r.ahorro = {total: tot, usado: usado, neto: usado > 0 ? Number(item.neto) || 0 : tot,
+    enSalio: enSalio, directo: Math.min(dm, tot), delCobro: cg, regreso: reg};
+  return r;
 }
 
 // Registros sin periodo cuya fecha cae en un mes que ya está en Mi Historia:
@@ -6612,6 +6791,7 @@ function renderHistoria() {
       ? 'Sobró ' + fmx(item.dif)
       : 'Se pasó ' + fmx(Math.abs(item.dif));
     var esMesActual = idx === 0;
+    var R = resumenDe(item);
 
     return '<div class="historia-item">' +
       '<div class="historia-hdr" onclick="toggleHistoria(' + idx + ')">' +
@@ -6626,38 +6806,38 @@ function renderHistoria() {
         '<div style="height:10px"></div>' +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">💰 Entró</span>' +
-          '<span class="historia-dato-val pos">' + fmx(entroMostrado(item)) + '</span>' +
+          '<span class="historia-dato-val pos">' + fmx(R.entro) + '</span>' +
         '</div>' +
-        (Number(item.directoMetas) > 0
+        (R.resta[0].v > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83C\uDFAF Directo a metas</span>' +
-            '<span class="historia-dato-val">' + fmx(-item.directoMetas) + '</span></div>' : '') +
-        (Number(item.retiros) > 0
+            '<span class="historia-dato-val">' + fmx(-R.resta[0].v) + '</span></div>' : '') +
+        (R.suma[1].v > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\u21A9 Retiro de ahorro</span>' +
-            '<span class="historia-dato-val">+' + fmx(item.retiros) + '</span></div>' : '') +
-        (Number(item.cobros) > 0
+            '<span class="historia-dato-val">+' + fmx(R.suma[1].v) + '</span></div>' : '') +
+        (R.suma[0].v > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83E\uDD1D Cobro de tanda</span>' +
-            '<span class="historia-dato-val">+' + fmx(item.cobros) + '</span></div>' : '') +
-        (Number(item.cobrosGuardado) > 0
+            '<span class="historia-dato-val">+' + fmx(R.suma[0].v) + '</span></div>' : '') +
+        (R.resta[1].v > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83C\uDFAF Del cobro a metas y ahorro</span>' +
-            '<span class="historia-dato-val">' + fmx(-item.cobrosGuardado) + '</span></div>' : '') +
+            '<span class="historia-dato-val">' + fmx(-R.resta[1].v) + '</span></div>' : '') +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">📤 Salió</span>' +
-          '<span class="historia-dato-val g" style="color:#C4704F">' + fmx(item.gasto) + '</span>' +
+          '<span class="historia-dato-val g" style="color:#C4704F">' + fmx(R.salio) + '</span>' +
         '</div>' +
         (item.ing !== undefined && desgloseEntro(item.ing, item.arr, extItem(item))
           ? '<div style="font-size:11px;color:#7D5F4E;margin:-2px 0 4px">' + desgloseEntro(item.ing, item.arr, extItem(item)) + '</div>' : '') +
         '<div class="historia-dato">' +
           '<span class="historia-dato-lbl">' + (pos?'✅ Sobró':'⚠️ Se pasó') + '</span>' +
-          '<span class="historia-dato-val ' + (pos?'pos':'neg') + '">' + fmx(Math.abs(item.dif)) + '</span>' +
+          '<span class="historia-dato-val ' + (pos?'pos':'neg') + '">' + fmx(Math.abs(R.dif)) + '</span>' +
         '</div>' +
-        (ahorroDeHistoria(item) > 0
+        (R.ahorro.total > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\uD83D\uDCB0 Ahorraste</span>' +
-            '<span class="historia-dato-val pos">' + fmx(ahorroDeHistoria(item)) + '</span></div>' : '') +
-        (Number(item.usado) > 0
+            '<span class="historia-dato-val pos">' + fmx(R.ahorro.total) + '</span></div>' : '') +
+        (R.ahorro.usado > 0
           ? '<div class="historia-dato"><span class="historia-dato-lbl">\u21A9 Usaste de tu ahorro</span>' +
-            '<span class="historia-dato-val">' + fmx(item.usado) + '</span></div>' +
+            '<span class="historia-dato-val">' + fmx(R.ahorro.usado) + '</span></div>' +
             '<div class="historia-dato"><span class="historia-dato-lbl">Neto del mes</span>' +
-            '<span class="historia-dato-val ' + (item.neto >= 0 ? 'pos' : 'neg') + '">' + fmx(item.neto) + '</span></div>' : '') +
+            '<span class="historia-dato-val ' + (R.ahorro.neto >= 0 ? 'pos' : 'neg') + '">' + fmx(R.ahorro.neto) + '</span></div>' : '') +
         (item.provisiones && txtProvisiones(item.provisiones)
           ? '<div style="font-size:11px;color:#7D5F4E;margin:4px 0">\uD83E\uDDFE ' + escHtml(txtProvisiones(item.provisiones)) + '</div>' : '') +
         (item.sobres && item.sobres.length
