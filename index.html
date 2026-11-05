@@ -173,6 +173,18 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 .s-badge{position:absolute;top:26px;right:6px;width:7px;height:7px;border-radius:50%;background:#F2A07B;z-index:2;}
 .sobre-del{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(61,43,31,.55);color:#fff;font-size:11px;line-height:20px;text-align:center;z-index:3;cursor:pointer;}
 .sobre-del:active{background:rgba(61,43,31,.8);}
+.sobre-ed{left:4px;right:auto;}
+.dlg-frm{text-align:left;margin-bottom:6px}
+.dlg-frm label{display:block;font-size:11px;color:#7D5F4E;margin:8px 0 3px;font-weight:600}
+.dlg-frm .dlg-i{display:block;width:100%;margin-bottom:0;box-sizing:border-box}
+.dlg-frm .em-nota{font-size:11px;color:#7D5F4E;margin-top:4px;line-height:1.4}
+.dlg-frm .em-av{font-size:12px;color:#C4704F;font-weight:600;margin-top:8px;line-height:1.4}
+.ss-ed{display:inline-block;margin-left:6px;font-size:11px;cursor:pointer;opacity:.75}
+.mv-dia{display:flex;justify-content:space-between;font-size:11px;color:#7D5F4E;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px;font-weight:600}
+.mv-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.mv-chip{border:1.5px solid #E8DDD0;background:#fff;border-radius:99px;padding:4px 10px;font-size:11px;color:#6B4C3B;cursor:pointer;font-family:var(--fb)}
+.mv-chip.on{background:#C4704F;border-color:#C4704F;color:#fff}
+.mv-tot{display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:#3D2B1F;border-top:1.5px solid #E8DDD0;margin-top:12px;padding-top:8px}
 /* Firma: el sobre se "llena" de abajo hacia arriba según % del límite
    gastado — la misma métrica que ya calcula limEfectivo()/calcGS(), solo
    visualizada como nivel en vez de barra. Tope visual en 78% de la altura
@@ -894,6 +906,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div style="flex:1"><div class="ban-tit" id="cumple-t">Tu cumple se acerca</div><div class="ban-sub" id="cumple-s">¿Ya tienes algo apartado?</div></div>
       <div style="font-size:15px;color:rgba(255,255,255,.8)">›</div>
     </div>
+    <button class="btn-add" id="btn-movs-ini" style="margin:4px 0 0" onclick="abrirMovimientosMes()">&#x1F4CB; Movimientos del mes</button>
     <div class="sec-t">Mis Sobres</div>
     <div class="grid-s" id="grid-s"></div>
     <div class="sec-t">Metas Activas</div>
@@ -925,6 +938,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     <div id="r-ret" style="display:none;font-size:11px;color:#7D5F4E;margin-top:2px;text-align:center"></div>
     <div id="r-prov" style="display:none;font-size:11px;color:#7D5F4E;margin-top:4px;text-align:center"></div>
     <button class="btn-pri" onclick="dlgElegirMesReporte()" style="width:100%;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px">&#x1F4C4; Generar reporte</button>
+    <button class="btn-add" id="btn-movs-rep" style="width:100%;margin-top:8px" onclick="abrirMovimientosMes()">&#x1F4CB; Movimientos del mes</button>
     <div class="grf-w"><div class="grf-t">Ingresos vs Gastos</div><div class="grf-bars" id="grf-bars"></div>
       <div style="display:flex;gap:14px;margin-top:10px;justify-content:center">
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#7D5F4E"><div style="width:10px;height:10px;border-radius:2px;background:#7A9E7E"></div>Ingresos</div>
@@ -1068,6 +1082,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div id="m-cont"></div>
       <div class="frm" id="frm" style="display:none">
         <div class="frm-t" id="frm-t">Registrar gasto</div>
+        <div id="frm-ver" style="display:none;font-size:12px;margin:-2px 0 8px"></div>
         <div class="frm-mw"><span class="frm-pfx">$</span><input type="number" class="frm-m" id="frm-m" placeholder="0.00" inputmode="decimal" aria-label="Monto del gasto"></div>
         <input type="text" class="frm-n" id="frm-n" placeholder="¿En qué fue? (opcional)" aria-label="Descripción del gasto (opcional)">
         <div id="dictado-hint" class="dictado-hint"></div>
@@ -1184,6 +1199,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     </div>
     <div class="dlg-b">
       <input class="dlg-i" id="dlg-i" type="text" style="display:none">
+      <div class="dlg-frm" id="dlg-frm" style="display:none"></div>
       <div class="dlg-inf" id="dlg-inf" style="display:none"></div>
       <div class="dlg-btns" id="dlg-btns"></div>
     </div>
@@ -2183,7 +2199,8 @@ function renderSobres() {
     html += '<div class="sobre' + (alerta?' alerta':'') + (s.custom?' custom':'') + '" onclick="abrirSobre(\''+s.id+'\')">' +
       (lim > 0 ? '<div class="sobre-fill ' + claseNivel + '" data-h="' + alturaFill + '" style="height:0"></div>' : '') +
       (alerta ? '<div class="s-badge"></div>' : '') +
-      (s.custom ? '<div class="sobre-del" onclick="event.stopPropagation();dlgElimSobre(\''+escAttrJs(s.id)+'\')">🗑</div>' : '') +
+      (s.custom ? '<div class="sobre-del" onclick="event.stopPropagation();dlgElimSobre(\''+escAttrJs(s.id)+'\')">\uD83D\uDDD1</div>' +
+        '<div class="sobre-del sobre-ed" role="button" aria-label="Editar sobre" onclick="event.stopPropagation();dlgEditarSobrePropio(\''+escAttrJs(s.id)+'\')">\u270F\uFE0F</div>' : '') +
       '<div class="sobre-ico-wrap">' +
         '<div class="s-ico">'+s.ico+'</div>' +
         '<div class="s-nom">'+escHtml(s.nom)+'</div>' +
@@ -2211,7 +2228,7 @@ function renderSobres() {
 function abrirSobre(id) {
   var s = todosSobres().filter(function(x){return x.id===id;})[0];
   if (!s) return;
-  E.sobreA = id; E.subA = null;
+  E.sobreA = id; E.subA = null; _vistaMovs = null;
   st('m-ico', s.ico); st('m-tit', s.cor); st('m-tip', s.tip);
   var inst = document.getElementById('m-inst');
   var instx = document.getElementById('m-inst-x');
@@ -2272,7 +2289,7 @@ function abrirSobre(id) {
       var el = document.createElement('div');
       el.className = 'sub-s';
       el.innerHTML = '<div class="ss-ico">'+sub.ico+'</div>' +
-        '<div class="ss-inf"><div class="ss-nom">'+escHtml(sub.nom)+'</div><div class="ss-ej">'+(sub.ej||'')+'</div></div>' +
+        '<div class="ss-inf"><div class="ss-nom">'+escHtml(sub.nom)+btnEditarSubcat('deudas', sub)+'</div><div class="ss-ej">'+(sub.ej||'')+'</div></div>' +
         '<div style="text-align:right"><div style="font-size:12px;font-weight:600;color:#3D2B1F">'+(g>0?fmx(g):'')+'</div><div style="font-size:13px;color:#7D5F4E">›</div></div>';
       el.onclick = (function(sid, snom) {
         return function() { selSub(sid, snom); };
@@ -2312,7 +2329,7 @@ function renderSubSobres(cont, s, id) {
     var g = calcGSS(id, sub.id);
     html += '<div class="sub-s" onclick="selSub(\''+escAttrJs(sub.id)+'\',\''+escAttrJs(sub.nom)+'\')">'+
       '<div class="ss-ico">'+sub.ico+'</div>'+
-      '<div class="ss-inf"><div class="ss-nom">'+escHtml(sub.nom)+'</div><div class="ss-ej">'+(sub.ej||'')+'</div></div>'+
+      '<div class="ss-inf"><div class="ss-nom">'+escHtml(sub.nom)+btnEditarSubcat(id, sub)+'</div><div class="ss-ej">'+(sub.ej||'')+'</div></div>'+
       '<div style="text-align:right"><div style="font-size:12px;font-weight:600;color:#3D2B1F">'+(g>0?fmx(g):'')+'</div><div style="font-size:13px;color:#7D5F4E">›</div></div>'+
       '</div>';
   });
@@ -2373,7 +2390,7 @@ function renderCasa(cont, s) {
     var g = calcGSS('casa', sub.id);
     cont.innerHTML += '<div class="sub-s" onclick="selSub(\''+escAttrJs(sub.id)+'\',\''+escAttrJs(sub.nom)+'\')">'+
       '<div class="ss-ico">'+sub.ico+'</div>'+
-      '<div class="ss-inf"><div class="ss-nom">'+escHtml(sub.nom)+'</div><div class="ss-ej">'+(sub.ej||'')+'</div></div>'+
+      '<div class="ss-inf"><div class="ss-nom">'+escHtml(sub.nom)+btnEditarSubcat('casa', sub)+'</div><div class="ss-ej">'+(sub.ej||'')+'</div></div>'+
       '<div style="text-align:right"><div style="font-size:12px;font-weight:600;color:#3D2B1F">'+(g>0?fmx(g):'')+'</div><div style="font-size:13px;color:#7D5F4E">›</div></div>'+
       '</div>';
   });
@@ -2389,6 +2406,7 @@ function renderTransaccionesDelSobre(sobreId) {
   var frm = document.getElementById('frm');
   frm.style.display = 'none';
   st('m-stit', 'Transacciones');
+  _vistaMovs = null;
   var regs = E.regs.filter(function(r){ return r.sobre === sobreId; }).slice();
   regs.sort(function(a,b){ return new Date(b.fecha) - new Date(a.fecha); });
   var html = '<button class="btn-add" style="margin-bottom:10px" onclick="abrirSobre(\''+escAttrJs(sobreId)+'\')">← Volver a categorías</button>';
@@ -2423,6 +2441,12 @@ function renderTransaccionesDelSobre(sobreId) {
   document.getElementById('mo-s').classList.add('on');
 }
 
+// ── Editar un movimiento (Bloque 10 · Fase b) ──
+// Monto, nota, sobre, subcategoría y fecha en un solo diálogo; nada se guarda
+// hasta "Guardar". La fecha va del día 1 del mes del movimiento hasta hoy (sin
+// fechas futuras) y conserva la hora original. Si la subcategoría no existe en
+// el sobre nuevo, el diálogo la deja en "Sin categoría" y lo dice antes de guardar.
+var _edMov = null, _vistaMovs = null;
 function abrirModalEdicionTransaccion(id) {
   if (!exigirEscritura()) return; // modo consulta
   var r = null;
@@ -2431,39 +2455,200 @@ function abrirModalEdicionTransaccion(id) {
   if (mesEstaCerrado(periodoDe(r))) { avisoMesCerrado(periodoDe(r)); return; }
   if (movDeFondo(r)) return;
   if (movDePrestamo(r) || movDeTarjeta(r, 'editar') || movDeMeta(r, 'editar') || movDeServicio(r, 'editar')) return;
-  dlg({
-    e:'✏️', t:'Editar monto',
-    inf: '📝 ' + (r.nota || 'Sin nota') + '\nMonto actual: ' + fmx(r.mto),
-    inp:true, ph:'Nuevo monto', md:'decimal',
+  if (movDeTanda(r)) return;
+  if (r.sobre === 'ahorro') { dlgMovAhorro(r.id); return; }
+  dlgEditarMov(r);
+}
+// Un pago de tanda se corrige o deshace desde Mi Tandita.
+function movDeTanda(r) {
+  if (r.sobre !== 'tanda' && !(r.origen && r.origen.tipo === 'tanda')) return false;
+  dlg({e:'\uD83E\uDD1D', t:'Se maneja desde Mi Tandita', s:'Este gasto es un pago de tanda. Para corregirlo o deshacerlo, usa Mi Tandita.',
+    btns:[{l:'Ir a Mi Tandita', c:'p', f:function(){ abrirSobre('tanda'); }}, {l:'Cerrar', c:'s', f:null}]});
+  return true;
+}
+function ymdLocal(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+// Del día 1 del mes del movimiento hasta hoy (o el fin de ese mes, si ya pasó).
+function rangoFechaMov(r) {
+  var n = ymNum(periodoDe(r)), y = Math.floor(n / 12), m = n % 12;
+  var hoy = new Date(), fin = new Date(y, m + 1, 0);
+  var hoy0 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  return {min: ymdLocal(new Date(y, m, 1)), max: ymdLocal(fin < hoy0 ? fin : hoy0), mes: m};
+}
+function valEd(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+function dlgEditarMov(r, bor) {
+  bor = bor || {mto: r.mto, nota: r.nota || '', sobre: r.sobre, sub: r.sub || '', fecha: ymdLocal(new Date(r.fecha))};
+  _edMov = {r: r, subPrevio: bor.sub};
+  var rg = rangoFechaMov(r);
+  var sbs = sobresDeGasto().slice();
+  if (!sbs.some(function(x) { return x.id === r.sobre; })) sbs.unshift({id: r.sobre, cor: SOBRE_ELIMINADO.cor});
+  var opS = sbs.map(function(x) {
+    return '<option value="' + escHtml(x.id) + '"' + (x.id === bor.sobre ? ' selected' : '') + '>' + escHtml(x.cor) + '</option>';
+  }).join('');
+  var fechaFija = rg.min > rg.max;
+  dlg({e:'\u270F\uFE0F', t:'Editar movimiento',
+    html:'<label for="em-m">Monto</label><input class="dlg-i" id="em-m" type="number" inputmode="decimal" value="' + escHtml(bor.mto) + '" oninput="avisoEdMov()">' +
+      '<label for="em-n">Nota</label><input class="dlg-i" id="em-n" type="text" placeholder="Sin nota" value="' + escHtml(bor.nota) + '">' +
+      '<label for="em-s">Sobre</label><select class="dlg-i" id="em-s" onchange="subsEdMov();avisoEdMov()">' + opS + '</select>' +
+      '<label for="em-c">Subcategoría</label><select class="dlg-i" id="em-c" onchange="_edMov.subPrevio=this.value;subsEdMov()"></select>' +
+      '<div class="em-nota" id="em-cn" style="display:none"></div>' +
+      '<label for="em-f">Fecha</label><input class="dlg-i" id="em-f" type="date" min="' + rg.min + '" max="' + rg.max + '" value="' + escHtml(bor.fecha) + '"' + (fechaFija ? ' disabled' : '') + '>' +
+      '<div class="em-nota">' + (fechaFija ? 'La fecha se puede cambiar cuando empiece ' + MESES_NOM[rg.mes].toLowerCase() + '.'
+        : 'Solo dentro de ' + MESES_NOM[rg.mes].toLowerCase() + ', hasta hoy. Se conserva la hora.') + '</div>' +
+      '<div class="em-av" id="em-av" style="display:none"></div>',
     btns:[
-      {l:'Siguiente →', c:'p', f:function(v){
-        var val = r2(parseFloat(v));
-        if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); return; }
-        // El monto nuevo se guarda solo con "Guardar" u "Omitir nota".
-        dlg({
-          e:'📝', t:'Editar nota',
-          s:'Escribe una nueva nota, o deja el campo vacío para quitarla',
-          inp:true, ph:'Nota (opcional)', md:'text', val:r.nota || '',
-          btns:[
-            {l:'Guardar', c:'p', f:function(v2){
-              r.mto = val;
-              r.nota = (v2||'').trim();
-              guardar(); actualizarUI(); renderSobres();
-              renderTransaccionesDelSobre(r.sobre);
-              toast('Transacción actualizada ✓');
-            }},
-            {l:'Omitir nota', c:'s', f:function(){
-              r.mto = val;
-              guardar(); actualizarUI(); renderSobres();
-              renderTransaccionesDelSobre(r.sobre);
-              toast('Monto actualizado ✓');
-            }}
-          ]
-        });
-      }},
+      {l:'Guardar', c:'p', f:function() { guardarEdMov(r, rg); }},
       {l:'Cancelar', c:'s', f:null}
-    ]
+    ]});
+  subsEdMov();
+  avisoEdMov();
+}
+// Subcategorías del sobre elegido; si la de antes no existe ahí, queda "Sin categoría".
+function subsEdMov() {
+  var sid = valEd('em-s'), sel = document.getElementById('em-c'), nota = document.getElementById('em-cn');
+  if (!sel || !_edMov) return;
+  var subs = subsDeSobre(sid), quiero = _edMov.subPrevio || '';
+  var existe = !quiero || subs.some(function(x) { return x.id === quiero; });
+  sel.innerHTML = '<option value="">Sin categoría</option>' + subs.map(function(x) {
+    return '<option value="' + escHtml(x.id) + '"' + (existe && x.id === quiero ? ' selected' : '') + '>' + escHtml(x.nom) + '</option>';
+  }).join('');
+  var r = _edMov.r, antes = subsDeSobre(r.sobre).filter(function(x) { return x.id === quiero; })[0];
+  if (!existe && antes) {
+    nota.textContent = '"' + antes.nom + '" no existe en ' + nombreSobreId(sid) + ': queda Sin categoría. Puedes elegir otra.';
+    nota.style.display = 'block';
+  } else nota.style.display = 'none';
+}
+// "Te pasaste" del sobre elegido con el monto nuevo, antes de guardar.
+function avisoEdMov() {
+  var av = document.getElementById('em-av');
+  if (!av || !_edMov) return;
+  var r = _edMov.r, sid = valEd('em-s'), x = r2(parseFloat(valEd('em-m'))) || 0;
+  var lim = limEfectivo(sid);
+  var g = r2(calcGS(sid) - (r.sobre === sid && periodoDe(r) === periodoActual() ? Number(r.mto) || 0 : 0) + x);
+  if (lim > 0 && g > lim) {
+    av.textContent = '\u26A0\uFE0F Te pasaste ' + fmx(r2(g - lim)) + ' en ' + nombreSobreId(sid) + ' (' + fmx(g) + ' de ' + fmx(lim) + ').';
+    av.style.display = 'block';
+  } else av.style.display = 'none';
+}
+function guardarEdMov(r, rg) {
+  var bor = {mto: valEd('em-m'), nota: valEd('em-n'), sobre: valEd('em-s'), sub: valEd('em-c'), fecha: valEd('em-f')};
+  var x = r2(parseFloat(bor.mto));
+  if (isNaN(x) || x <= 0) { toast('Ingresa un monto válido'); dlgEditarMov(r, bor); return; }
+  var f = bor.fecha, cambiaF = f !== ymdLocal(new Date(r.fecha));
+  if (cambiaF && (!/^\d{4}-\d\d-\d\d$/.test(f) || f < rg.min || f > rg.max)) {
+    toast('La fecha debe ser del ' + Number(rg.min.slice(8)) + ' al ' + Number(rg.max.slice(8)) + ' de ' + MESES_NOM[rg.mes].toLowerCase());
+    dlgEditarMov(r, bor); return;
+  }
+  var antes = r.sobre;
+  if (cambiaF) {
+    var od = new Date(r.fecha), p = f.split('-');
+    if (isNaN(od.getTime())) od = new Date(2000, 0, 1, 12);
+    if (!r.periodo) r.periodo = periodoDe(r);
+    r.fecha = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), od.getHours(), od.getMinutes(), od.getSeconds(), od.getMilliseconds()).toISOString();
+  }
+  r.mto = x;
+  r.nota = (bor.nota || '').trim();
+  r.sobre = bor.sobre;
+  r.sub = bor.sub || null;
+  _edMov = null;
+  guardar(); actualizarUI(); renderSobres();
+  refrescarVistaMovs(antes);
+  toast('Movimiento actualizado \u2713');
+}
+// Después de editar o borrar: vuelve a pintar la lista que estaba abierta.
+function refrescarVistaMovs(sobreId) {
+  if (_vistaMovs) renderMovimientosMes(_vistaMovs.filtro);
+  else renderTransaccionesDelSobre(sobreId);
+}
+
+// ── Movimientos del mes (Bloque 10 · Fase b) ──
+// Todo lo que cuenta en Salió, de todos los sobres, por día. No incluye
+// préstamos (su historial está en el detalle del préstamo). La suma de los
+// días es igual a Salió (salioMes()).
+function movsDelMes() {
+  var p = periodoActual();
+  return E.regs.filter(function(r) { return periodoDe(r) === p && r.sobre !== 'extra' && !esPagoPrestamo(r) && (Number(r.mto) || 0) !== 0; });
+}
+function abrirMovimientosMes(filtro) {
+  st('m-ico', '\uD83D\uDCCB'); st('m-tit', 'Movimientos del mes'); st('m-tip', ymNombre(periodoActual()) + ' · lo que cuenta en Salió');
+  document.getElementById('m-inst').style.display = 'none';
+  document.getElementById('frm').style.display = 'none';
+  renderMovimientosMes(filtro || {});
+  document.getElementById('mo-s').classList.add('on');
+}
+function subDeReg(r) { return subsDeSobre(r.sobre).filter(function(x) { return x.id === r.sub; })[0] || null; }
+function nombreSobreReg(r) { return todosSobres().some(function(x) { return x.id === r.sobre; }) ? nombreSobreId(r.sobre) : SOBRE_ELIMINADO.cor; }
+function renderMovimientosMes(filtro) {
+  filtro = filtro || {};
+  _vistaMovs = {filtro: filtro};
+  var cont = document.getElementById('m-cont');
+  var todos = movsDelMes();
+  var regs = todos.filter(function(r) { return (!filtro.sobre || r.sobre === filtro.sobre) && (!filtro.sub || r.sub === filtro.sub); });
+  regs.sort(function(a, b) { return new Date(b.fecha) - new Date(a.fecha); });
+  var subF = filtro.sub ? subsDeSobre(filtro.sobre).filter(function(x) { return x.id === filtro.sub; })[0] : null;
+  st('m-stit', subF ? 'Movimientos de ' + subF.nom : 'Movimientos');
+  var ids = [];
+  todos.forEach(function(r) { if (ids.indexOf(r.sobre) === -1) ids.push(r.sobre); });
+  var chip = function(f, txt, on) {
+    return '<button class="mv-chip' + (on ? ' on' : '') + '" onclick="renderMovimientosMes(' + escHtml(JSON.stringify(f)) + ')">' + escHtml(txt) + '</button>';
+  };
+  var html = '<div class="mv-chips">' + chip({}, 'Todos', !filtro.sobre) +
+    ids.map(function(id) { return chip({sobre: id}, nombreSobreReg({sobre: id}), filtro.sobre === id && !filtro.sub); }).join('') +
+    (subF ? chip({sobre: filtro.sobre, sub: filtro.sub}, subF.nom, true) : '') + '</div>';
+  if (!regs.length) {
+    html += '<div style="background:#fff;border-radius:10px;padding:16px;text-align:center;font-size:13px;color:#7D5F4E">Todavía no hay movimientos este mes.</div>';
+  }
+  var dias = [], porDia = {};
+  regs.forEach(function(r) {
+    var k = ymdLocal(new Date(r.fecha));
+    if (!porDia[k]) { porDia[k] = []; dias.push(k); }
+    porDia[k].push(r);
   });
+  var total = 0;
+  dias.forEach(function(k) {
+    var lista = porDia[k], t = r2(lista.reduce(function(a, r) { return a + (Number(r.mto) || 0); }, 0));
+    total = r2(total + t);
+    var p = k.split('-'), d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    html += '<div class="mv-dia" data-dia="' + k + '"><span>' + escHtml(d.toLocaleDateString('es-MX', {weekday: 'long', day: 'numeric', month: 'long'})) + '</span><span class="mv-dia-t">' + fmx(t) + '</span></div>';
+    lista.forEach(function(r) {
+      var sb = todosSobres().filter(function(x) { return x.id === r.sobre; })[0], sub = subDeReg(r);
+      var hora = new Date(r.fecha).toLocaleTimeString('es-MX', {hour: '2-digit', minute: '2-digit'});
+      html += '<div class="sub-s mv-it" data-id="' + escHtml(r.id) + '" onclick="dlgDetalleMov(' + escHtml(JSON.stringify(r.id)) + ')">' +
+        '<div class="ss-ico">' + (sb ? sb.ico : '\uD83D\uDCE6') + '</div>' +
+        '<div class="ss-inf"><div class="ss-nom">' + escHtml(r.nota || (sub ? sub.nom : '') || 'Sin nota') + '</div>' +
+        '<div class="ss-ej">' + escHtml(hora + ' · ' + nombreSobreReg(r) + (sub ? ' · ' + sub.nom : '')) + '</div></div>' +
+        '<div style="text-align:right;font-size:13px;font-weight:600;color:#3D2B1F">' + fmx(r.mto) + '</div></div>';
+    });
+  });
+  if (regs.length) {
+    html += '<div class="mv-tot"><span>' + (filtro.sobre ? 'Total' : 'Total = Salió del mes') + '</span><span id="mv-total">' + fmx(total) + '</span></div>';
+  }
+  cont.innerHTML = html;
+}
+// Detalle de un movimiento: fecha completa con hora, sobre, subcategoría, nota y monto.
+function dlgDetalleMov(id) {
+  var r = regPorId(id);
+  if (!r) return;
+  var d = new Date(r.fecha), sub = subDeReg(r);
+  var fecha = d.toLocaleDateString('es-MX', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'}) + ', ' +
+    d.toLocaleTimeString('es-MX', {hour: '2-digit', minute: '2-digit'});
+  dlg({e:'\uD83E\uDDFE', t:fmx(r.mto), s:r.nota || 'Sin nota',
+    inf:'\uD83D\uDCC5 ' + fecha + '\n\uD83D\uDDC2\uFE0F ' + nombreSobreReg(r) + '\n\uD83C\uDFF7\uFE0F ' + (sub ? sub.nom : 'Sin categoría'),
+    btns:[
+      {l:'\u270F\uFE0F Editar', c:'p', f:function() { abrirModalEdicionTransaccion(r.id); }},
+      {l:'\uD83D\uDDD1 Eliminar', c:'d', f:function() { dlgEliminarTransaccion(r.id); }},
+      {l:'Cerrar', c:'s', f:null}
+    ]});
+}
+// Formulario de gasto: "Ver sus N movimientos" de la subcategoría abierta.
+function mostrarVerSub(sobreId, subId) {
+  var el = document.getElementById('frm-ver');
+  if (!el) return;
+  var ms = movsDelMes().filter(function(r) { return r.sobre === sobreId && r.sub === subId; });
+  if (!ms.length || !subId) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  var t = r2(ms.reduce(function(a, r) { return a + (Number(r.mto) || 0); }, 0));
+  el.innerHTML = '<a href="#" style="color:#C4704F;font-weight:600" onclick="event.preventDefault();abrirMovimientosMes(' + escHtml(JSON.stringify({sobre: sobreId, sub: subId})) + ')">\uD83D\uDCCB ' +
+    (ms.length === 1 ? 'Ver su movimiento' : 'Ver sus ' + ms.length + ' movimientos') + ' (' + fmx(t) + ')</a>';
+  el.style.display = 'block';
 }
 
 function dlgEliminarTransaccion(id) {
@@ -2482,7 +2667,7 @@ function dlgEliminarTransaccion(id) {
         var sobreId = r.sobre;
         E.regs = E.regs.filter(function(x){ return x.id !== id; });
         guardar(); actualizarUI(); renderSobres();
-        renderTransaccionesDelSobre(sobreId);
+        refrescarVistaMovs(sobreId);
         toast('Transacción eliminada');
       }},
       {l:'Cancelar', c:'s', f:null}
@@ -2496,6 +2681,7 @@ function selSub(subId, subNom) {
   var frm = document.getElementById('frm');
   frm.style.display = 'block';
   st('frm-t', 'Registrar en: ' + subNom);
+  mostrarVerSub(E.sobreA, subId);
   document.getElementById('frm-m').value = '';
   document.getElementById('frm-n').value = '';
   document.getElementById('frm-m').focus();
@@ -2508,6 +2694,7 @@ function guardarGasto() {
   var nota = document.getElementById('frm-n').value.trim();
   if (!mto || mto <= 0) { toast('Escribe el monto del gasto 💸'); return; }
   E.regs.push({id:Date.now(), sobre:E.sobreA, sub:E.subA, mto:mto, nota:nota, periodo: periodoActual(), fecha:new Date().toISOString()});
+  mostrarVerSub(E.sobreA, E.subA);
   contReg();
   guardar();
   var lim = limEfectivo(E.sobreA);
@@ -3624,6 +3811,92 @@ function recalcLimCont() {
   el.textContent = 'Ingreso ' + fmx(mto) + ' · Asignado ' + fmx(tot) + ' · ' +
     (dif <= -1 ? 'Asignaste ' + fmx(-dif) + ' de más' : 'Sin asignar ' + fmx(dif >= 1 ? dif : 0));
   el.style.color = dif <= -1 ? '#D9534F' : '#4E7A52';
+}
+
+// ── Sobres y subcategorías propios: editar (Bloque 10 · Fase b) ──
+// Los meses cerrados guardan los nombres de entonces (copia congelada), así que no cambian.
+function dlgEditarSobrePropio(id) {
+  if (!exigirEscritura()) return; // modo consulta
+  var s = (E.custom || []).filter(function(x) { return x.id === id; })[0];
+  if (!s) return;
+  dlg({e:s.ico, t:'Editar ' + s.cor, s:'Sobre propio', btns:[
+    {l:'Nombre: ' + s.cor, c:'s', f:function() {
+      dlg({e:s.ico, t:'Nombre del sobre', inp:true, ph:'Nombre del sobre', md:'text', val:s.cor, btns:[
+        {l:'Guardar', c:'p', f:function(v) {
+          v = (v || '').trim();
+          if (!v) { toast('Escribe un nombre'); return; }
+          if (todosSobres().some(function(x) { return x.id !== id && String(x.cor).toLowerCase() === v.toLowerCase(); })) { toast('Ya tienes un sobre con ese nombre'); return; }
+          s.cor = v; s.nom = v + '\n(Personal)';
+          s.tip = 'Sobre personalizado — registra aquí tus gastos de ' + v + '.';
+          guardar(); renderSobres(); actualizarUI();
+          toast('Sobre renombrado a "' + v + '" \u2713');
+        }},
+        {l:'Cancelar', c:'s', f:null}]});
+    }},
+    {l:'Ícono: ' + s.ico, c:'s', f:function() {
+      abrirGaleria(function(ico) { s.ico = ico; guardar(); renderSobres(); actualizarUI(); toast('Ícono cambiado \u2713'); });
+    }},
+    {l:'Cancelar', c:'s', f:null}]});
+}
+function subPropia(sobreId, subId) {
+  return ((E.subsCB && E.subsCB[sobreId]) || []).filter(function(x) { return x.id === subId; })[0] || null;
+}
+function btnEditarSubcat(sobreId, sub) {
+  if (!subPropia(sobreId, sub.id)) return '';
+  return '<span class="ss-ed" role="button" aria-label="Editar categoría" onclick="event.stopPropagation();dlgEditarSubcat(\'' + escAttrJs(sobreId) + '\',\'' + escAttrJs(sub.id) + '\')">\u270F\uFE0F</span>';
+}
+function dlgEditarSubcat(sobreId, subId) {
+  if (!exigirEscritura()) return; // modo consulta
+  var sub = subPropia(sobreId, subId);
+  if (!sub) return;
+  dlg({e:sub.ico, t:sub.nom, s:'Categoría de ' + nombreSobreId(sobreId), btns:[
+    {l:'Nombre: ' + sub.nom, c:'s', f:function() {
+      dlg({e:sub.ico, t:'Nombre de la categoría', inp:true, ph:'Nombre de la categoría', md:'text', val:sub.nom, btns:[
+        {l:'Guardar', c:'p', f:function(v) {
+          v = (v || '').trim();
+          if (!v) { toast('Escribe un nombre'); return; }
+          sub.nom = v;
+          guardar(); abrirSobre(sobreId);
+          toast('Categoría renombrada a "' + v + '" \u2713');
+        }},
+        {l:'Cancelar', c:'s', f:null}]});
+    }},
+    {l:'Ícono: ' + sub.ico, c:'s', f:function() {
+      abrirGaleria(function(ico) { sub.ico = ico; guardar(); abrirSobre(sobreId); toast('Ícono cambiado \u2713'); });
+    }},
+    {l:'\uD83D\uDDD1 Eliminar', c:'d', f:function() { dlgEliminarSubcat(sobreId, subId); }},
+    {l:'Cancelar', c:'s', f:null}]});
+}
+// Borrar: sus gastos de meses abiertos y sus servicios pasan a la categoría que elija
+// (o a "Sin categoría"). Los meses cerrados no se tocan.
+function dlgEliminarSubcat(sobreId, subId) {
+  if (!exigirEscritura()) return; // modo consulta
+  var sub = subPropia(sobreId, subId);
+  if (!sub) return;
+  var regs = E.regs.filter(function(r) { return r.sobre === sobreId && r.sub === subId && !mesEstaCerrado(periodoDe(r)); });
+  var srvs = (E.servicios || []).filter(function(x) { return x.sobre === sobreId && x.sub === subId; });
+  var borrar = function(dest, nomDest) {
+    regs.forEach(function(r) { r.sub = dest; });
+    srvs.forEach(function(x) { x.sub = dest; });
+    E.subsCB[sobreId] = E.subsCB[sobreId].filter(function(x) { return x.id !== subId; });
+    guardar(); abrirSobre(sobreId); actualizarUI();
+    toast('Categoría "' + sub.nom + '" eliminada' + (regs.length || srvs.length ? ' · lo suyo pasó a ' + nomDest : ''));
+  };
+  if (!regs.length && !srvs.length) {
+    dlg({e:'\uD83D\uDDD1', t:'Eliminar categoría', s:'¿Eliminar "' + sub.nom + '"? No se puede deshacer.', btns:[
+      {l:'Sí, eliminar', c:'d', f:function() { borrar(null, ''); }},
+      {l:'Cancelar', c:'s', f:null}]});
+    return;
+  }
+  var t = r2(regs.reduce(function(a, r) { return a + (Number(r.mto) || 0); }, 0)), partes = [];
+  if (regs.length) partes.push(regs.length + (regs.length === 1 ? ' gasto' : ' gastos') + ' (' + fmx(t) + ')');
+  if (srvs.length) partes.push(srvs.length + (srvs.length === 1 ? ' servicio' : ' servicios'));
+  var btns = subsDeSobre(sobreId).filter(function(x) { return x.id !== subId; }).map(function(x) {
+    return {l:x.ico + ' ' + x.nom, c:'s', f:function() { borrar(x.id, x.nom); }};
+  });
+  btns.push({l:'Sin categoría', c:'s', f:function() { borrar(null, 'Sin categoría'); }});
+  btns.push({l:'Cancelar', c:'s', f:null});
+  dlg({e:'\uD83D\uDDD1', t:'Eliminar "' + sub.nom + '"', s:'Tiene ' + partes.join(' y ') + '. ¿A qué categoría lo paso? No se puede deshacer.', btns:btns});
 }
 
 function dlgNuevaSubcat(sobreId) {
@@ -5276,6 +5549,8 @@ function dlg(cfg) {
     inp.value=(cfg.val!==undefined&&cfg.val!==null)?cfg.val:'';
     setTimeout(function(){inp.focus();},200);}
   else inp.style.display='none';
+  var df=document.getElementById('dlg-frm');
+  if(cfg.html){df.innerHTML=cfg.html;df.style.display='block';}else{df.innerHTML='';df.style.display='none';}
   var di=document.getElementById('dlg-inf');
   if(cfg.inf){di.style.display='block';di.textContent=cfg.inf;}else di.style.display='none';
   var btns=document.getElementById('dlg-btns');btns.innerHTML='';
