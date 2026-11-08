@@ -673,6 +673,10 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 .tc-fecha-dias{font-size:10px;font-weight:600;margin-top:2px;}
 /* acciones */
 .tc-acciones{display:flex;gap:8px;margin-top:4px;}
+.tc-pagos{background:#FAF6F0;border-radius:8px;padding:8px 10px;margin:6px 0}
+.tc-pagos-t{font-size:10px;color:#7D5F4E;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.tc-pago{display:flex;justify-content:space-between;font-size:12px;color:#3D2B1F;padding:2px 0}
+.tc-pagos-ver{background:none;border:none;color:#C4704F;font-size:12px;font-weight:600;padding:4px 0 0;cursor:pointer;font-family:var(--fb)}
 .tc-btn{flex:1;padding:9px;border-radius:8px;font-family:var(--fb);font-size:12px;font-weight:600;cursor:pointer;border:none;transition:opacity .2s;}
 .tc-btn:active{opacity:.8;}
 .tc-btn.pri{background:#C4704F;color:#fff;}
@@ -2254,6 +2258,7 @@ function abrirSobre(id) {
       hdrD = '<div class="bar-w" style="margin-bottom:12px">' +
         '<div class="bar-h"><div class="bar-l">Límite: '+fmx(limD)+'</div><div class="bar-p">'+fmx(gastoD)+' ('+pctD+'%)</div></div>' +
         '<div class="bar-t"><div class="bar-f '+clsD+'" style="width:'+pctD+'%"></div></div>' +
+        (prestamosMes().pagaste > 0 ? '<div id="deu-usaste" style="font-size:11px;color:#7D5F4E;margin-top:4px">Usaste '+fmx(gastoD)+' de '+fmx(limD)+' (incluye '+fmx(prestamosMes().pagaste)+' de pagos de préstamo)</div>' : '') +
         (alD ? '<div class="bar-al '+clsD+'">'+alD+'</div>' : '') +
         '</div>';
     }
@@ -2582,16 +2587,17 @@ function renderMovimientosMes(filtro) {
   _vistaMovs = {filtro: filtro};
   var cont = document.getElementById('m-cont');
   var todos = movsDelMes();
-  var regs = todos.filter(function(r) { return (!filtro.sobre || r.sobre === filtro.sobre) && (!filtro.sub || r.sub === filtro.sub); });
+  var nSem = ymNum(periodoActual()), conSem = filtro.sem !== undefined;
+  var regs = todos.filter(function(r) { return (!filtro.sobre || esDeSobre(r, filtro.sobre)) && (!filtro.sub || r.sub === filtro.sub) && (!conSem || semanaDeReg(r, nSem % 12, Math.floor(nSem / 12)) === filtro.sem); });
   regs.sort(function(a, b) { return new Date(b.fecha) - new Date(a.fecha); });
   var subF = filtro.sub ? subsDeSobre(filtro.sobre).filter(function(x) { return x.id === filtro.sub; })[0] : null;
-  st('m-stit', subF ? 'Movimientos de ' + subF.nom : 'Movimientos');
+  st('m-stit', subF ? 'Movimientos de ' + subF.nom : conSem ? txtSemanaPer(filtro.sem) : 'Movimientos');
   var ids = [];
   todos.forEach(function(r) { if (ids.indexOf(r.sobre) === -1) ids.push(r.sobre); });
   var chip = function(f, txt, on) {
     return '<button class="mv-chip' + (on ? ' on' : '') + '" onclick="renderMovimientosMes(' + escHtml(JSON.stringify(f)) + ')">' + escHtml(txt) + '</button>';
   };
-  var html = '<div class="mv-chips">' + chip({}, 'Todos', !filtro.sobre) +
+  var html = '<div class="mv-chips">' + chip({}, 'Todos', !filtro.sobre && !conSem) +
     ids.map(function(id) { return chip({sobre: id}, nombreSobreReg({sobre: id}), filtro.sobre === id && !filtro.sub); }).join('') +
     (subF ? chip({sobre: filtro.sobre, sub: filtro.sub}, subF.nom, true) : '') + '</div>';
   if (!regs.length) {
@@ -2620,7 +2626,7 @@ function renderMovimientosMes(filtro) {
     });
   });
   if (regs.length) {
-    html += '<div class="mv-tot"><span>' + (filtro.sobre ? 'Total' : 'Total = Salió del mes') + '</span><span id="mv-total">' + fmx(total) + '</span></div>';
+    html += '<div class="mv-tot"><span>' + (filtro.sobre || conSem ? 'Total' : 'Total = Salió del mes') + '</span><span id="mv-total">' + fmx(total) + '</span></div>';
   }
   cont.innerHTML = html;
 }
@@ -4706,7 +4712,7 @@ function getTandas() { if(!E.tandas)E.tandas=[]; return E.tandas; }
 // el turno importa. A diferencia de una barra de progreso genérica, el
 // orden aquí SÍ es información real (quién ya cobró, quién sigue, cuál es
 // tu turno) — no un adorno tipo 01/02/03.
-function renderRuedaTanda(t) {
+function renderRuedaTanda(t, idx) {
   var pgs = t.pgs ? t.pgs.length : 0;
   var n = t.part || 1;
   var puntos = '';
@@ -4716,7 +4722,7 @@ function renderRuedaTanda(t) {
     var y = 50 + 40 * Math.sin(ang);
     var estado = i <= pgs ? 'pasado' : i === pgs + 1 ? 'actual' : 'futuro';
     var esTuTurno = i === t.turno;
-    puntos += '<div class="tanda-punto ' + estado + (esTuTurno ? ' tu-turno' : '') + '" style="left:' + x.toFixed(1) + '%;top:' + y.toFixed(1) + '%" title="Turno ' + i + (esTuTurno ? ' (tú)' : '') + '">' + i + '</div>';
+    puntos += '<div class="tanda-punto ' + estado + (esTuTurno ? ' tu-turno' : '') + '" style="left:' + x.toFixed(1) + '%;top:' + y.toFixed(1) + '%;cursor:pointer" role="button" onclick="dlgTurnoTanda(' + idx + ',' + i + ')" title="Turno ' + i + (esTuTurno ? ' (tú)' : '') + '">' + i + '</div>';
   }
   return '<div class="tanda-rueda">' + puntos +
     '<div class="tanda-rueda-centro"><div class="tanda-rueda-pct">' + Math.min(100, Math.round(pgs / n * 100)) + '%</div><div class="tanda-rueda-lbl">cobrado</div></div>' +
@@ -4743,7 +4749,7 @@ function renderTandas(cont) {
       '<div style="font-size:10px;color:'+(cobrado?'#4E7A52':'#C4704F')+';margin-top:2px">'+
       (function(){var per=t.periodo||'semanal';var plab=per==='mensual'?'mes':per==='quincenal'?'quincena':'semana';return cobrado?'✅ Ya cobraste':sems===0?'🎉 ¡Cobras este '+plab+'!':'🗓 Cobras en '+sems+' '+plab+(sems!==1&&per==='semanal'?'s':per==='mensual'?'es':'s');})()+
       '</div></div></div>'+
-      renderRuedaTanda(t)+
+      renderRuedaTanda(t, i)+
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:10px">'+
       '<div style="background:#FAF6F0;border-radius:8px;padding:7px;text-align:center"><div style="font-size:9px;color:#7D5F4E">Total tanda</div><div style="font-size:12px;font-weight:700;color:#3D2B1F">'+fmx(t.mto*t.part)+'</div></div>'+
       '<div style="background:#FAF6F0;border-radius:8px;padding:7px;text-align:center"><div style="font-size:9px;color:#7D5F4E">Pagos hechos</div><div style="font-size:12px;font-weight:700;color:#3D2B1F">'+pgs+'/'+t.part+'</div></div>'+
@@ -5114,16 +5120,104 @@ function abrirRincon() {
 }
 
 // ════ REPORTES ════════════════════════════════════
+// ── Detalle al tocar (Bloque 10 · Fase c-2) ──
+// Lo de cada sobre que cuenta en Salió (sin pagos de préstamo): las filas suman exactamente Salió.
+function gastoSalioSobre(id) {
+  return r2(movsDelMes().filter(function(r) { return esDeSobre(r, id); }).reduce(function(t, r) { return t + (Number(r.mto) || 0); }, 0));
+}
+function semanaDeReg(r, mes, anio) {
+  var f = new Date(r.fecha);
+  // Gasto de antes del día 1 (registrado tras un cierre anticipado): semana 1
+  var dia = (f.getMonth() === mes && f.getFullYear() === anio) ? f.getDate() : 1;
+  return dia <= 7 ? 0 : dia <= 14 ? 1 : dia <= 21 ? 2 : 3;
+}
+function txtSemanaPer(i) {
+  var n = ymNum(periodoActual()), fin = new Date(Math.floor(n / 12), n % 12 + 1, 0).getDate();
+  return 'Semana ' + (i + 1) + ' (del ' + (i * 7 + 1) + ' al ' + (i === 3 ? fin : (i + 1) * 7) + ')';
+}
+function filtroAttr(f) { return escHtml(JSON.stringify(f)); }
+function filaPagosPrestamo(cls) {
+  var x = prestamosMes().pagaste;
+  if (!(x > 0)) return '';
+  return '<div class="' + cls + ' pr-pagos" role="button" style="cursor:pointer" onclick="abrirSobre(\'prestamos\')">' +
+    '<div style="flex:1;font-size:12px;color:#7D5F4E">Pagos de préstamo: ' + fmx(x) + ' →</div></div>';
+}
+// Balance: a dónde lleva cada renglón.
+function accionBal(l) {
+  var js = /^(Empezaste con|Te faltó en)/.test(l) ? 'irMesAnteriorHistoria()' : {
+    'Entró': 'dlgEntro()', 'Salió': 'abrirMovimientosMes()', 'Cobro de tanda': "abrirSobre('tanda')", 'Retiro de ahorro': "abrirSobre('ahorro')",
+    'Te pagaron un préstamo': "abrirSobre('prestamos')", 'Te prestaron': "abrirSobre('prestamos')", 'Prestaste': "abrirSobre('prestamos')", 'Pagaste un préstamo': "abrirSobre('prestamos')",
+    'Directo a metas': "irA('p-metas');renderMetas()", 'Del cobro a metas y ahorro': "irA('p-metas');renderMetas()"}[l];
+  return js ? ' role="button" style="cursor:pointer" onclick="' + js + '"' : '';
+}
+// Rueda de Tandita: la app no guarda nombres ni la fecha de inicio; lo futuro se estima desde el último pago.
+function fechaTurnoAprox(t, i) {
+  var pgs = (t.pgs || []).slice().sort(function(a, b) { return a.sem - b.sem; });
+  if (!pgs.length) return null;
+  var ult = pgs[pgs.length - 1], d = new Date(ult.fecha), k = i - ult.sem, per = t.periodo || 'semanal';
+  if (isNaN(d.getTime())) return null;
+  if (per === 'mensual') d.setMonth(d.getMonth() + k); else d.setDate(d.getDate() + k * (per === 'quincenal' ? 15 : 7));
+  return d.toISOString();
+}
+function dlgTurnoTanda(idx, i) {
+  var t = getTandas()[idx];
+  if (!t) return;
+  var p = (t.pgs || []).filter(function(x) { return x.sem === i; })[0], tuyo = i === t.turno, cobro = fmx(t.mto * t.part), s;
+  if (p) s = 'Pagaste ' + fmx(p.mto) + ' el ' + fechaCorta(p.fecha) + (tuyo ? ' · Tu turno: cobraste ' + cobro : '');
+  else {
+    var f = fechaTurnoAprox(t, i);
+    s = (tuyo ? 'Tu turno: cobras ' + cobro + ' · ' : '') + (f ? 'aprox. ' + fechaCorta(f) : 'Sin fecha aún');
+  }
+  dlg({e: '\uD83E\uDD1D', t: 'Turno ' + i, s: s, btns: [{l: 'Entendido', c: 'p', f: null}]});
+}
+// Insignias: cómo se consigue y cuánto falta, con las mismas reglas de verificarInsignias().
+function avanceInsignia(id) {
+  var r = (E.gamif && E.gamif.racha) || 0, dias = {pri_semana: 7, mes_completo: 30, trimestre: 90}[id];
+  if (dias) return 'Llevas ' + Math.min(r, dias) + ' de ' + dias + ' días seguidos.';
+  if (id === 'meta_cumplida' || id === 'colchon') {
+    var ms = getMetas().filter(function(m) {
+      var n = (m.nom || '').toLowerCase();
+      return m.meta > 0 && (id === 'meta_cumplida' || n.indexOf('emergencia') >= 0 || n.indexOf('fondo') >= 0 || n.indexOf('colchon') >= 0);
+    }).sort(function(a, b) { return (b.actual || 0) / b.meta - (a.actual || 0) / a.meta; });
+    return ms.length ? 'Tu meta más avanzada: ' + ms[0].nom + ', ' + Math.min(100, Math.round((ms[0].actual || 0) / ms[0].meta * 100)) + '%.' : '';
+  }
+  if (id === 'msi_ok') {
+    var xs = getMSI().filter(function(m) { return m.meses > 0; }).sort(function(a, b) { return (b.mesesPagados || 0) / b.meses - (a.mesesPagados || 0) / a.meses; });
+    return xs.length ? 'El más avanzado: ' + xs[0].nom + ', ' + (xs[0].mesesPagados || 0) + ' de ' + xs[0].meses + '.' : '';
+  }
+  if (id === 'despensa_ok') {
+    var n = 0;
+    (E.historial || []).slice(0, 2).every(function(h) {
+      var d = (h.sobres || []).filter(function(s) { return s.id === 'despensa'; })[0];
+      if (d && d.lim > 0 && d.mto <= d.lim) { n++; return true; }
+      return false;
+    });
+    return 'Llevas ' + n + ' de 2 meses seguidos.';
+  }
+  return '';
+}
+function dlgInsignia(i) {
+  var ig = INSIGNIAS[i];
+  if (!ig) return;
+  var ok = ((E.gamif && E.gamif.insignias) || []).indexOf(ig.id) >= 0;
+  dlg({e: ig.ico, t: ig.nom, s: ig.des, inf: ok ? '¡Ya la tienes!' : avanceInsignia(ig.id), btns: [{l: 'Entendido', c: 'p', f: null}]});
+}
+// Tarjeta: los últimos pagos a la vista.
+function pagosRecientesTC(t, i) {
+  var ps = (t.pagos || []).slice().reverse(), ult = ps.slice(0, 3);
+  if (!ult.length) return '';
+  return '<div class="tc-pagos"><div class="tc-pagos-t">Últimos pagos</div>' + ult.map(function(p) {
+    var msiT = r2(msiDePago(p).reduce(function(s, x) { return s + x.mto; }, 0));
+    return '<div class="tc-pago"><span>' + escHtml(fechaCorta(p.fecha)) + '</span><span>' + (p.mto > 0 ? fmx(p.mto) : '') + (msiT > 0 ? (p.mto > 0 ? ' + ' : '') + fmx(msiT) + ' MSI' : '') + '</span></div>';
+  }).join('') + '<button class="tc-pagos-ver" onclick="dlgHistorialPagos(' + i + ')">Ver todos (' + ps.length + ')</button></div>';
+}
 function calcGastoPorSemana(mes, anio) {
   // Devuelve array de 4 semanas con gasto real del mes
   var semanas = [0, 0, 0, 0];
   var ym = ymDeNum(anio*12 + mes);
   E.regs.forEach(function(r) {
     if (periodoDe(r) !== ym || esPagoPrestamo(r)) return;
-    var f = new Date(r.fecha);
-    // Gasto de antes del día 1 (registrado tras un cierre anticipado): semana 1
-    var dia = (f.getMonth() === mes && f.getFullYear() === anio) ? f.getDate() : 1;
-    var idx = dia <= 7 ? 0 : dia <= 14 ? 1 : dia <= 21 ? 2 : 3;
+    var idx = semanaDeReg(r, mes, anio);
     semanas[idx] = r2(semanas[idx] + (Number(r.mto) || 0));
   });
   return semanas;
@@ -5199,7 +5293,7 @@ function renderReportes() {
       var pi = Math.round((ingSem / maxG) * 90) || 10;
       var esPasada = i < Math.floor((hoy.getDate()-1)/7);
       var colorG = semGastos[i] > ingSem ? '#D9534F' : '#C4704F';
-      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">' +
+      return '<div class="bar-sem"' + (!esSem && semGastos[i] ? ' role="button" onclick="abrirMovimientosMes({sem:' + i + '})"' : '') + ' style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px' + (!esSem && semGastos[i] ? ';cursor:pointer' : '') + '">' +
         '<div style="font-size:9px;color:#7D5F4E;margin-bottom:2px">' + (semGastos[i]>0 ? fmx(semGastos[i]) : '') + '</div>' +
         '<div style="display:flex;gap:2px;align-items:flex-end;width:100%;height:70px">' +
         '<div class="bv i" style="flex:1;height:' + pi + '%;opacity:' + (esPasada?'0.5':'1') + '"></div>' +
@@ -5214,14 +5308,14 @@ function renderReportes() {
   }
   var ds=document.getElementById('desglose');
   if(ds){
-    var gt=calcGT()||1;
-    var items=sobresYEliminado().map(function(s){return{ico:s.ico,nom:s.cor,mto:calcGS(s.id)};}).filter(function(x){return x.mto>0;}).sort(function(a,b){return b.mto-a.mto;});
-    ds.innerHTML=items.length?items.map(function(x){
-      return '<div class="des-it"><div style="font-size:20px;width:28px;text-align:center">'+x.ico+'</div>'+
+    var gt=salioMes()||1;
+    var items=sobresYEliminado().map(function(s){return{id:s.id,ico:s.ico,nom:s.cor,mto:gastoSalioSobre(s.id)};}).filter(function(x){return x.mto!==0;}).sort(function(a,b){return b.mto-a.mto;});
+    ds.innerHTML=(items.length?items.map(function(x){
+      return '<div class="des-it des-sobre" data-id="'+escHtml(x.id)+'" role="button" style="cursor:pointer" onclick="abrirMovimientosMes('+filtroAttr({sobre:x.id})+')"><div style="font-size:20px;width:28px;text-align:center">'+x.ico+'</div>'+
         '<div style="flex:1;font-size:13px;color:#3D2B1F">'+escHtml(x.nom)+'</div>'+
-        '<div><div style="font-size:13px;font-weight:600;color:#3D2B1F">'+fmx(x.mto)+'</div>'+
+        '<div><div class="des-v" style="font-size:13px;font-weight:600;color:#3D2B1F">'+fmx(x.mto)+'</div>'+
         '<div style="font-size:10px;color:#7D5F4E">'+((x.mto/gt)*100).toFixed(0)+'%</div></div></div>';
-    }).join(''):'<div style="text-align:center;color:#7D5F4E;padding:18px;font-size:13px">Aún no hay gastos registrados</div>';
+    }).join(''):'<div style="text-align:center;color:#7D5F4E;padding:18px;font-size:13px">Aún no hay gastos registrados</div>')+filaPagosPrestamo('des-it');
   }
   renderHistoria();
   var bg=document.getElementById('balance');
@@ -5255,7 +5349,7 @@ var ICO_BAL = {'Cobro de tanda': '\uD83E\uDD1D', 'Retiro de ahorro': '\u21A9', '
 function balanceMes() {
   var R = resumenDe(snapshotMesActual());
   var fila = function(ico, l, val, color) {
-    return '<div class="des-it bal-it" data-l="' + escHtml(l) + '"><div style="font-size:20px;width:28px;text-align:center">' + ico + '</div>' +
+    return '<div class="des-it bal-it" data-l="' + escHtml(l) + '"' + accionBal(l) + '><div style="font-size:20px;width:28px;text-align:center">' + ico + '</div>' +
       '<div style="flex:1;font-size:13px;color:#3D2B1F">' + escHtml(l) + '</div>' +
       '<div class="bal-v" style="font-size:13px;font-weight:600;color:' + color + '">' + val + '</div></div>';
   };
@@ -5280,7 +5374,7 @@ function apartesSemana(regs) {
   if (!filas.length) return '';
   return '<div style="font-size:11px;color:#7D5F4E;margin:10px 0 2px">Aparte, esta semana (no cuentan en la Diferencia)</div>' +
     filas.map(function(x) {
-      return '<div class="des-it bal-it" data-l="' + x[0] + '"><div style="font-size:20px;width:28px;text-align:center">' + (ICO_BAL[x[0]] || '+') + '</div>' +
+      return '<div class="des-it bal-it" data-l="' + x[0] + '"' + accionBal(x[0]) + '><div style="font-size:20px;width:28px;text-align:center">' + (ICO_BAL[x[0]] || '+') + '</div>' +
         '<div style="flex:1;font-size:13px;color:#3D2B1F">' + x[0] + '</div>' +
         '<div class="bal-v" style="font-size:13px;font-weight:600;color:' + (x[2] ? '#4E7A52' : '#7D5F4E') + '">' + (x[2] ? '+' + fmx(x[1]) : fmx(-x[1])) + '</div></div>';
     }).join('');
@@ -6197,26 +6291,29 @@ function prepararCierre() {
   if (cPr) { var txtP = txtProvisiones(provisionesMes(regsDeMes(mesIdx, anio), ymDeNum(anio * 12 + mesIdx))); cPr.textContent = txtP ? '\uD83E\uDDFE ' + txtP : ''; cPr.style.display = txtP ? 'block' : 'none'; }
 
   // Sobres — top 4 con más gasto
-  var items = sobresYEliminado()
-    .map(function(s) { return {ico:s.ico, nom:s.cor, mto:calcGS(s.id), lim:limEfectivo(s.id)}; })
-    .filter(function(x) { return x.mto > 0; })
-    .sort(function(a,b) { return b.mto - a.mto; })
-    .slice(0,4);
+  var todosC = sobresYEliminado()
+    .map(function(s) { return {id:s.id, ico:s.ico, nom:s.cor, mto:gastoSalioSobre(s.id), gs:calcGS(s.id), lim:limEfectivo(s.id)}; })
+    .filter(function(x) { return x.mto !== 0; })
+    .sort(function(a,b) { return b.mto - a.mto; });
+  var items = todosC.slice(0,4), restoC = todosC.slice(4);
 
   var sobresEl = document.getElementById('cierre-sobres');
   if (sobresEl) {
     sobresEl.innerHTML = items.map(function(x) {
-      var pct = x.lim > 0 ? Math.round(x.mto/x.lim*100) : 0;
+      var pct = x.lim > 0 ? Math.round(x.gs/x.lim*100) : 0;
       var color = pct > 100 ? '#D9534F' : pct > 85 ? '#C4704F' : '#4E7A52';
-      return '<div class="cierre-sobre-row">' +
+      return '<div class="cierre-sobre-row cierre-toca" data-id="' + escHtml(x.id) + '" role="button" style="cursor:pointer" onclick="abrirMovimientosMes(' + filtroAttr({sobre:x.id}) + ')">' +
         '<div style="font-size:18px">' + x.ico + '</div>' +
         '<div style="flex:1;font-size:13px;color:#3D2B1F">' + escHtml(x.nom) + '</div>' +
         '<div style="text-align:right">' +
-          '<div style="font-size:13px;font-weight:600;color:#3D2B1F">' + fmx(x.mto) + '</div>' +
+          '<div class="cierre-v" style="font-size:13px;font-weight:600;color:#3D2B1F">' + fmx(x.mto) + '</div>' +
           (x.lim > 0 ? '<div style="font-size:10px;color:'+color+'">'+pct+'% del límite</div>' : '') +
         '</div>' +
         '</div>';
-    }).join('');
+    }).join('') + (restoC.length ? '<div class="cierre-sobre-row cierre-toca" data-id="_otros" role="button" style="cursor:pointer" onclick="abrirMovimientosMes()">' +
+        '<div style="flex:1;font-size:13px;color:#3D2B1F">Otros (' + restoC.length + (restoC.length === 1 ? ' sobre' : ' sobres') + ')</div>' +
+        '<div class="cierre-v" style="font-size:13px;font-weight:600;color:#3D2B1F">' + fmx(r2(restoC.reduce(function(t, x) { return t + x.mto; }, 0))) + '</div></div>' : '') +
+      filaPagosPrestamo('cierre-sobre-row');
   }
 
   // Metas
@@ -6228,7 +6325,7 @@ function prepararCierre() {
   if (metasEl && metasConAvance.length) {
     metasEl.innerHTML = metasConAvance.map(function(m) {
       var pct = m.meta > 0 ? Math.min(100, Math.round((m.actual||0)/m.meta*100)) : 0;
-      return '<div class="cierre-sobre-row">' +
+      return '<div class="cierre-sobre-row cierre-meta" role="button" style="cursor:pointer" onclick="dlgDetalleMeta(' + mts.indexOf(m) + ')">' +
         '<div style="font-size:18px">' + m.ico + '</div>' +
         '<div style="flex:1;font-size:13px;color:#3D2B1F">' + escHtml(m.nom) + '</div>' +
         '<div style="text-align:right">' +
@@ -6842,10 +6939,10 @@ function construirModeloReporte(item, tipo) {
     corte: item.fecha ? new Date(item.fecha) : new Date(), generado: new Date(), resumen: R,
     provisiones: txtProvisionesPDF(item.provisiones), faltan: det ? [] : ['apartados', 'movs', 'tarjetas', 'prestamos', 'tandas']};
   m.sobres = det ? det.sobres.map(function(s) {
-    return {nom: s.nom, base: s.base, extra: s.extra, asig: r2(s.base + s.extra), gast: s.gast};
+    return {id: s.id, nom: s.nom, base: s.base, extra: s.extra, asig: r2(s.base + s.extra), gast: s.gast};
   }) : (item.sobres || []).map(function(s) {
     var lim = s.lim !== undefined ? Number(s.lim) || 0 : Number(E.lims[s.id]) || 0; // límite de ESE mes
-    return {nom: s.nom, base: lim, extra: 0, asig: lim, gast: Number(s.mto) || 0};
+    return {id: s.id, nom: s.nom, base: lim, extra: 0, asig: lim, gast: Number(s.mto) || 0};
   });
   var LBL_AP = {apartado: 'Apartado para el recibo', ajusteRecibo: 'Ajuste por recibo real', fondoLiberado: 'Fondo liberado', pago: 'Pago del recibo'};
   m.apartados = det ? det.apartados.map(function(a) {
@@ -7084,18 +7181,18 @@ function construirPDFReporte(jsPDF, R, modelo) {
   // 2. Detalle por sobre (asignado de ESE mes: base + extra temporal)
   (function() {
     var cols = [{t: 'Sobre', w: 160}, {t: 'Asignado', w: 84, al: 'r'}, {t: 'Gastado', w: 84, al: 'r'}, {t: 'Disponible', w: 84, al: 'r'}, {t: '% usado', w: CW - 412}];
-    var ta = 0, tg = 0;
-    var filas = modelo.sobres.map(function(s) {
-      ta += s.asig; tg += s.gast;
+    var ta = 0, tg = 0, pagPr = modelo.resumen.resta[3].v;
+    var filas = modelo.sobres.filter(function(s) { return !(s.id === 'deudas' && !s.asig && r2(s.gast - pagPr) === 0); }).map(function(s) {
+      var enSalio = s.id === 'deudas' ? r2(s.gast - pagPr) : s.gast;
+      ta += s.asig; tg += enSalio;
       var pct = s.asig > 0 ? Math.round(s.gast / s.asig * 100) : 0;
       var sub = s.extra ? 'Base ' + pdfMonto(s.base) + ' + extra del mes ' + pdfMonto(s.extra) : '';
-      return {c: [{txt: s.nom, sub: sub, subAncho: CW - 12}, s.asig, s.gast, r2(s.asig - s.gast), {barra: true, pct: pct}], h: sub ? 28 : 18};
+      return {c: [{txt: s.nom, sub: sub, subAncho: CW - 12}, s.asig, enSalio, r2(s.asig - s.gast), {barra: true, pct: pct}], h: sub ? 28 : 18};
     });
     if (!filas.length) { seccion('Detalle por sobre', 20); nota('Sin sobres con límite ni gastos este mes.'); return; }
-    var pagPr = modelo.resumen.resta[3].v;
-    tabla('Detalle por sobre', cols, filas, ['Total', r2(ta), r2(tg), r2(ta - tg), ''],
+    tabla('Detalle por sobre', cols, filas, ['Total', r2(ta), r2(tg), r2(ta - tg - pagPr), ''],
       'Asignado: límite guardado de ' + modelo.mesNom + ' (base + extras temporales de ese mes).' +
-      (pagPr ? ' Deudas incluye ' + pdfMonto(pagPr) + ' que pagaste de un préstamo; en el Resumen va en su renglón, no dentro de Salió.' : ''));
+      (pagPr ? ' Gastado no incluye ' + pdfMonto(pagPr) + ' de pagos de préstamo (van en su renglón del Resumen); Disponible y % usado de Deudas sí los incluyen.' : ''));
   })();
 
   // 3. Apartados y ajustes
@@ -8260,6 +8357,7 @@ function buildTarjetaBody(t, i) {
   }
 
   // ── Acciones ─────────────────────────────────────
+  html += pagosRecientesTC(t, i);
   html += '<div class="tc-acciones" style="margin-bottom:6px">' +
     '<button class="tc-btn sec" onclick="dlgRegistrarConsumo(' + i + ')">🛍️ Registrar consumo</button>' +
     '<button class="tc-btn pri" onclick="dlgAbonarTarjeta(' + i + ')">💸 Registrar pago</button>' +
@@ -10819,7 +10917,7 @@ function renderMetasInicio(){
 // ── GAMIFICACIÓN ──────────────────────────────────
 // ══════════════════════════════════════════════════
 var NIVELES=[{ico:'🌱',nom:'Semilla Financiera',req:0},{ico:'🌿',nom:'Guardiana del Peso',req:30},{ico:'🌸',nom:'Dueña de su Dinero',req:90},{ico:'🌟',nom:'Maestra del Dinero',req:180}];
-var INSIGNIAS=[{id:'pri_semana',ico:'🔥',nom:'Primera semana',des:'7 días registrando'},{id:'mes_completo',ico:'💪',nom:'Mes sin fallar',des:'30 días consecutivos'},{id:'trimestre',ico:'🏆',nom:'Trimestre de acero',des:'90 días seguidos'},{id:'pri_ahorro',ico:'🐷',nom:'Primera alcancía',des:'Primer mes con ahorro'},{id:'meta_cumplida',ico:'🎯',nom:'Meta cumplida',des:'Completar una meta'},{id:'colchon',ico:'🌙',nom:'Colchón listo',des:'Fondo de emergencias listo'},{id:'mas_minimo',ico:'✂️',nom:'Primera tijera',des:'Pagar más del mínimo'},{id:'msi_ok',ico:'🎉',nom:'MSI terminado',des:'Completar un plan MSI'},{id:'diagnostico',ico:'📚',nom:'Estudiante',des:'Completar el diagnóstico'},{id:'recurso',ico:'🎓',nom:'Aplicada',des:'Visitar un recurso educativo'},{id:'despensa_ok',ico:'🛒',nom:'Despensa bajo control',des:'No pasarse en alimentos 2 meses'},{id:'reto_semana',ico:'🌮',nom:'Reto completado',des:'Aceptar y completar un reto'}];
+var INSIGNIAS=[{id:'pri_semana',ico:'\uD83D\uDD25',nom:'Primera semana',des:'7 días registrando'},{id:'mes_completo',ico:'\uD83D\uDCAA',nom:'Mes sin fallar',des:'30 días consecutivos'},{id:'trimestre',ico:'\uD83C\uDFC6',nom:'Trimestre de acero',des:'90 días seguidos'},{id:'pri_ahorro',ico:'\uD83D\uDC37',nom:'Primera alcancía',des:'Crea tu primera meta de ahorro'},{id:'meta_cumplida',ico:'\uD83C\uDFAF',nom:'Meta cumplida',des:'Completar una meta'},{id:'colchon',ico:'\uD83C\uDF19',nom:'Colchón listo',des:'Fondo de emergencias listo'},{id:'mas_minimo',ico:'\u2702\uFE0F',nom:'Primera tijera',des:'Pagar más del mínimo'},{id:'msi_ok',ico:'\uD83C\uDF89',nom:'MSI terminado',des:'Completar un plan MSI'},{id:'diagnostico',ico:'\uD83D\uDCDA',nom:'Estudiante',des:'Completar el diagnóstico'},{id:'recurso',ico:'\uD83C\uDF93',nom:'Aplicada',des:'Visitar un recurso educativo'},{id:'despensa_ok',ico:'\uD83D\uDED2',nom:'Despensa bajo control',des:'No pasarse en alimentos 2 meses'},{id:'reto_semana',ico:'\uD83C\uDF2E',nom:'Reto completado',des:'Acepta un reto de la semana'}];
 var RETOS=['Esta semana registra TODOS tus gastos sin excepción 📝','Cocina en casa 4 días — ahorra en restaurantes 🍳','Revisa tu Afore en CONSAR — tarda 5 minutos 📋','Aparta $200 extra esta semana para tu fondo de emergencias 🛡️','Compara precios antes de ir al super 🛒','Cancela suscripciones que no uses 📱','Cierra esta semana sin usar tarjeta de crédito 💳','Consulta Cetesdirecto — invierte desde $100 💰'];
 function getNivel(){var r=E.gamif&&E.gamif.racha?E.gamif.racha:0;var n=NIVELES[0];for(var i=NIVELES.length-1;i>=0;i--){if(r>=NIVELES[i].req){n=NIVELES[i];break;}}return n;}
 function getSigNivel(){var r=E.gamif&&E.gamif.racha?E.gamif.racha:0;for(var i=0;i<NIVELES.length;i++){if(NIVELES[i].req>r)return NIVELES[i];}return null;}
@@ -10866,9 +10964,9 @@ function renderProgreso(){
     '<div class="reto-btns"><button class="reto-btn p" onclick="aceptarReto()">✅ ¡Lo acepto!</button><button class="reto-btn s" onclick="nuevoReto()">Otro reto</button></div></div>';
   html+='<div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--cac);margin-bottom:10px">🏅 Mis Insignias ('+ins.length+'/'+INSIGNIAS.length+')</div>';
   html+='<div class="ins-grid">';
-  INSIGNIAS.forEach(function(ig){
+  INSIGNIAS.forEach(function(ig,ix){
     var ok=ins.indexOf(ig.id)>=0;
-    html+='<div class="ins-item'+(ok?'':' lock')+'"><div class="ins-emo">'+ig.ico+'</div><div class="ins-nom">'+ig.nom+'</div><div class="ins-des">'+ig.des+'</div></div>';
+    html+='<div class="ins-item'+(ok?'':' lock')+'" role="button" style="cursor:pointer" onclick="dlgInsignia('+ix+')"><div class="ins-emo">'+ig.ico+'</div><div class="ins-nom">'+ig.nom+'</div><div class="ins-des">'+ig.des+'</div></div>';
   });
   html+='</div>';
   cont.innerHTML=html;
