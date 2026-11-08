@@ -3124,9 +3124,11 @@ function desmarcarPagado(idx) {
         if (regAj) E.regs = E.regs.filter(function(r){ return r !== regAj; });
         if (grupo[0].estimadoPrevio !== undefined) s.mto = grupo[0].estimadoPrevio;
         grupo.forEach(function(p) {
-          if (!p.movido || !E.limsExtraMes) return;
-          E.limsExtraMes[p.movido.de] = r2((E.limsExtraMes[p.movido.de] || 0) + p.movido.mto);
-          E.limsExtraMes[p.movido.a] = r2((E.limsExtraMes[p.movido.a] || 0) - p.movido.mto);
+          if (!E.limsExtraMes) return;
+          (p.movidos || (p.movido ? [p.movido] : [])).forEach(function(mv) {
+            E.limsExtraMes[mv.de] = r2((E.limsExtraMes[mv.de] || 0) + mv.mto);
+            E.limsExtraMes[mv.a] = r2((E.limsExtraMes[mv.a] || 0) - mv.mto);
+          });
         });
         s.pagos = s.pagos.filter(function(p){ return grupo.indexOf(p) === -1; });
         // El recibo más antiguo del grupo vuelve a quedar sin pagar
@@ -3306,24 +3308,10 @@ function revisarAjusteSobre(grupo, aj, dest) {
   var queda = r2(limEfectivo(dest.sobre) - calcGS(dest.sobre) + aj);
   if (aj <= queda) return;
   var falta = r2(aj - Math.max(0, queda)), nomS = nombreSobreId(dest.sobre);
-  var btns = sobresDeGasto().filter(function(x) {
-    return x.id !== dest.sobre && E.lims[x.id] > 0 && r2(limEfectivo(x.id) - calcGS(x.id)) >= falta;
-  }).map(function(x) {
-    return {l:x.ico + ' ' + x.cor + ' · quedan ' + fmx(r2(limEfectivo(x.id) - calcGS(x.id))), c:'s', f:function(){
-      if (!E.limsExtraMes) E.limsExtraMes = {};
-      E.limsExtraMes[x.id] = r2((E.limsExtraMes[x.id] || 0) - falta);
-      E.limsExtraMes[dest.sobre] = r2((E.limsExtraMes[dest.sobre] || 0) + falta);
-      grupo[grupo.length - 1].movido = {de:x.id, a:dest.sobre, mto:falta};
-      guardar(); actualizarUI(); abrirSobre('casa');
-      toast(fmx(falta) + ' de ' + x.cor + ' a ' + nomS + ' ✓');
-    }};
-  });
-  var hay = btns.length > 0;
-  btns.push({l:hay ? 'Dejarlo así' : 'Entendido', c:'s', f:null});
-  dlg({e:'\u26A0\uFE0F', t:'No alcanza en ' + nomS,
-    s:'El ajuste de ' + fmx(aj) + ' es mayor que lo que queda en ' + nomS + ' (' + fmx(Math.max(0, queda)) + ').' +
-      (hay ? ' ¿De dónde tomo los ' + fmx(falta) + '?' : ' Ningún otro sobre tiene ' + fmx(falta) + ' disponibles.'),
-    btns:btns});
+  dlgCubrirSobre({destino: dest.sobre, nom: nomS, falta: falta, titulo: 'No alcanza en ' + nomS,
+    texto: 'El ajuste de ' + fmx(aj) + ' es mayor que lo que queda en ' + nomS + ' (' + fmx(Math.max(0, queda)) + ').',
+    alListo: function(ms) { grupo[grupo.length - 1].movidos = ms; },
+    refrescar: function() { abrirSobre('casa'); }});
 }
 // Apartados, ajustes y fondo liberado se manejan desde el servicio.
 function movDeFondo(r) {
@@ -3563,6 +3551,7 @@ function dlgEditarSrv(idx) {
     ] : []).concat([
       {l:'\uD83D\uDDC2\uFE0F Sobre y categoría', c:'s', f:function(){ dlgSobreSrv(idx); }},
       {l:'\uD83D\uDCCB Ver pagos', c:'s', f:function(){ dlgPagosSrv(idx); }},
+      {l:'\uD83D\uDCC5 Agregar a mi calendario', c:'s', f:function(){ dlgCalendario(eventoServicio(s)); }},
       {l:'\uD83D\uDDD1 Eliminar servicio', c:'d', f:function(){ dlgEliminarSrv(idx); }},
       {l:'Cancelar', c:'s', f:null}
     ])
@@ -5687,6 +5676,7 @@ function dlg(cfg) {
   st('dlg-e',cfg.e||'💬');st('dlg-t',cfg.t||'');
   var ds=document.getElementById('dlg-s');ds.textContent=cfg.s||'';ds.style.display=cfg.s?'block':'none';
   var inp=document.getElementById('dlg-i');
+  inp.oninput=cfg.alEscribir||null;
   if(cfg.inp){inp.style.display='block';inp.placeholder=cfg.ph||'';
     inp.setAttribute('aria-label', cfg.ph || cfg.t || 'Campo de entrada');
     inp.type=cfg.md==='decimal'?'number':'text';inp.inputMode=cfg.md||'text';
@@ -7389,11 +7379,10 @@ function textoCierre(item) {
   var EI = entradaDe(item);
 
   // Tabla de sobres completa
-  var sobresLineas = (item.sobres || [])
-    .filter(function(s) { return s.mto > 0; })
+  var sobresLineas = sobresSinPagos(item)
     .map(function(s) {
       var lim = (s.lim !== undefined ? Number(s.lim) : E.lims[s.id]) || 0; // límite de ESE mes
-      var pct = lim > 0 ? ' (' + Math.round(s.mto/lim*100) + '%)' : '';
+      var pct = lim > 0 ? ' (' + Math.round(s.gs/lim*100) + '%)' : '';
       return '   ' + s.ico + ' ' + s.nom + ': ' + fmx(s.mto) + pct;
     }).join('\n');
 
@@ -7447,6 +7436,7 @@ function textoCierre(item) {
     (compLinea ? compLinea : '') + '\n' +
     '\n*Desglose por sobre*\n' +
     (sobresLineas || 'Sin gastos registrados') + '\n' +
+    (Number(item.pagaste) > 0 ? 'Pagos de préstamo: ' + fmx(item.pagaste) + '\n' : '') +
     (metasLineas ? '\n*Mis metas*\n' + metasLineas + '\n' : '') +
     '\n🔥 Racha: ' + (item.racha || 0) + ' días\n' +
     '_Generado con ¿A Dónde Se Fue?_';
@@ -7567,6 +7557,15 @@ function irMesAnteriorHistoria() {
 // solo lo que falte (lo apartado ya salió del Disponible). Tarjetas: lo que planeas pagar
 // (o el mínimo) menos lo pagado este mes, sin las mensualidades MSI. MSI: la mensualidad si
 // no se ha pagado este mes. Al pagar, baja el Disponible y baja igual lo pendiente.
+function msiPagadaEsteMes(m) {
+  var per = periodoActual();
+  return E.regs.some(function(r) {
+    if (periodoDe(r) !== per || r.sobre !== 'deudas') return false;
+    if (r.origen) return r.origen.tipo === 'msi' && r.origen.id === m.id;
+    var x = msiDeNota(r);
+    return !!x && x.m === m;
+  });
+}
 function pagosPendientesMes() {
   var per = periodoActual(), n = ymNum(per), hoy = new Date();
   var fin = fechaLocalKey(new Date(Math.floor(n / 12), n % 12 + 1, 0)), hoyK = fechaLocalKey(hoy);
@@ -7605,12 +7604,7 @@ function pagosPendientesMes() {
   getMSI().forEach(function(m) {
     var hechas = m.mesesPagados || 0;
     if (hechas >= m.meses) return;
-    var pagada = E.regs.some(function(r) {
-      if (periodoDe(r) !== per || r.sobre !== 'deudas') return false;
-      if (r.origen) return r.origen.tipo === 'msi' && r.origen.id === m.id;
-      var x = msiDeNota(r);
-      return !!x && x.m === m;
-    });
+    var pagada = msiPagadaEsteMes(m);
     if (!pagada) items.push({tipo: 'msi', nom: m.nom, mto: pagoMSI(m), por: 'Mensualidad ' + (hechas + 1) + ' de ' + m.meses});
   });
   return {items: items, avisos: avisos, total: r2(items.reduce(function(a, x) { return a + x.mto; }, 0))};
@@ -7929,15 +7923,16 @@ function renderHistoria() {
             '<span class="historia-dato-val ' + (R.ahorro.neto >= 0 ? 'pos' : 'neg') + '">' + fmx(R.ahorro.neto) + '</span></div>' : '') +
         (item.provisiones && txtProvisiones(item.provisiones)
           ? '<div style="font-size:11px;color:#7D5F4E;margin:4px 0">\uD83E\uDDFE ' + escHtml(txtProvisiones(item.provisiones)) + '</div>' : '') +
-        (item.sobres && item.sobres.length
+        (sobresSinPagos(item).length
           ? '<div style="margin-top:8px;font-size:10px;color:#7D5F4E;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Gastos por sobre</div>' +
-            item.sobres.slice().sort(function(a, b) { return b.mto - a.mto; }).map(function(s) {
+            sobresSinPagos(item).sort(function(a, b) { return b.mto - a.mto; }).map(function(s) {
               return '<div class="historia-dato">' +
                 '<span class="historia-dato-lbl">' + s.ico + ' ' + escHtml(s.nom) + '</span>' +
                 '<span class="historia-dato-val">' + fmx(s.mto) + '</span>' +
               '</div>';
             }).join('')
           : '') +
+        (Number(item.pagaste) > 0 ? '<div class="hist-pagos" style="font-size:12px;color:#7D5F4E;margin-top:4px">Pagos de préstamo: ' + fmx(item.pagaste) + '</div>' : '') +
         (item.det && item.det.movs
           ? '<button class="btn-add hist-movs" style="margin-top:8px" onclick="verMovsHistoria(' + idx + ')">&#x1F4CB; Ver los movimientos del mes</button>'
           : '<div class="hist-sin-movs" style="margin-top:8px;font-size:11px;color:#7D5F4E;background:#FAF6F0;border-radius:8px;padding:8px 10px;line-height:1.5">' +
@@ -8357,7 +8352,7 @@ function buildTarjetaBody(t, i) {
   }
 
   // ── Acciones ─────────────────────────────────────
-  html += pagosRecientesTC(t, i);
+  html += pagosRecientesTC(t, i) + btnsConsumosTC(t, i);
   html += '<div class="tc-acciones" style="margin-bottom:6px">' +
     '<button class="tc-btn sec" onclick="dlgRegistrarConsumo(' + i + ')">🛍️ Registrar consumo</button>' +
     '<button class="tc-btn pri" onclick="dlgAbonarTarjeta(' + i + ')">💸 Registrar pago</button>' +
@@ -8860,17 +8855,19 @@ function dlgRegistrarConsumo(idx) {
     inf: (t.saldo < 0 ? 'Saldo a favor: ' + fmx(-t.saldo) : 'Saldo actual: ' + fmx(t.saldo)) + (t.limite ? '\nDisponible: ' + fmx(disponible) : '') +
       '\n\n💡 Esto es para cuando pasas tu tarjeta en una compra normal — NO descuenta de tu presupuesto del mes, pero SÍ sube tu deuda con el banco.',
     inp: true, ph: '$ ¿Cuánto gastaste?', md: 'decimal',
+    html: '<label for="cs-n">Nota (opcional)</label><input class="dlg-i" id="cs-n" type="text" placeholder="¿En qué fue?"><div class="em-av" id="cs-av" style="display:none"></div>',
+    alEscribir: function() { avisoLimiteTC(t, r2(Number(t.saldo) || 0), parseFloat(document.getElementById('dlg-i').value)); },
     btns: [
       {l: 'Registrar consumo', c: 'p', f: function(v) {
         var val = r2(parseFloat(v));
         if (isNaN(val) || val <= 0) { toast('Ingresa un monto válido'); return; }
-        if (t.limite && (t.saldo + val) > t.limite) {
-          toast('⚠️ Ese consumo supera tu límite de crédito disponible');
-          return;
-        }
+        var nota = valEd('cs-n').trim();
         // Solo sube la deuda — NO se registra en E.regs porque no salió dinero de tu bolsa hoy
         var antesC = r2(Number(t.saldo) || 0), nuevoC = r2(antesC + val);
-        getTarjetas()[idx].saldo = nuevoC;
+        var tc = getTarjetas()[idx];
+        tc.saldo = nuevoC;
+        if (!tc.consumos) tc.consumos = [];
+        tc.consumos.push({id: 'cs_' + Date.now() + '_' + tc.consumos.length, mto: val, nota: nota, fecha: new Date().toISOString(), periodo: periodoActual()});
         guardar();
         abrirSobre('deudas');
         actualizarUI();
@@ -8880,6 +8877,218 @@ function dlgRegistrarConsumo(idx) {
       {l: 'Cancelar', c: 's', f: null}
     ]
   });
+}
+// Aviso (no bloquea): el consumo pasa del límite de crédito.
+function avisoLimiteTC(t, base, val) {
+  var av = document.getElementById('cs-av');
+  if (!av) return;
+  var x = t.limite ? r2(base + (Number(val) || 0) - t.limite) : 0;
+  av.textContent = x > 0 ? 'Pasas tu límite de crédito por ' + fmx(x) : '';
+  av.style.display = x > 0 ? 'block' : 'none';
+}
+// Consumos: lista, corregir y borrar. No cuentan en Salió; los de un mes cerrado no se tocan.
+function btnsConsumosTC(t, i) {
+  var n = (t.consumos || []).length;
+  return '<button class="tc-pagos-ver tc-consumos-ver" onclick="dlgConsumosTC(' + i + ')">Ver consumos (' + n + ')</button>' +
+    '<button class="tc-pagos-ver tc-cal" style="margin-left:14px" onclick="dlgCalendario(eventoTarjeta(getTarjetas()[' + i + ']))">&#x1F4C5; Agregar a mi calendario</button>';
+}
+function dlgConsumosTC(idx) {
+  var t = getTarjetas()[idx];
+  if (!t) return;
+  var cs = (t.consumos || []).slice().reverse();
+  var btns = cs.map(function(c) {
+    var cerr = mesEstaCerrado(c.periodo);
+    return {l: (cerr ? '\uD83D\uDD12 ' : '') + fechaCorta(c.fecha) + ' \u2014 ' + fmx(c.mto) + (c.nota ? ' \u00B7 ' + c.nota : ''), c: 's', f: function() {
+      if (cerr) { avisoMesCerrado(c.periodo); return; }
+      dlgEditarConsumo(idx, c.id);
+    }};
+  });
+  btns.push({l: 'Cerrar', c: 's', f: null});
+  dlg({e: '\uD83D\uDECD\uFE0F', t: 'Consumos de ' + t.nom, s: cs.length ? 'Toca un consumo para corregirlo o borrarlo.' : 'Todavía no hay consumos registrados.',
+    inf: 'El saldo de antes de guardar consumos no tiene detalle.', btns: btns});
+}
+function consumoPorId(t, id) { return (t.consumos || []).filter(function(c) { return c.id === id; })[0] || null; }
+function dlgEditarConsumo(idx, id, bor) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTarjetas()[idx], c = t ? consumoPorId(t, id) : null;
+  if (!c) return;
+  if (mesEstaCerrado(c.periodo)) { avisoMesCerrado(c.periodo); return; }
+  bor = bor || {mto: c.mto, nota: c.nota || '', fecha: ymdLocal(new Date(c.fecha))};
+  var rg = rangoFechaMov(c), base = r2((Number(t.saldo) || 0) - c.mto);
+  window._csAviso = function() { avisoLimiteTC(t, base, parseFloat(valEd('cs-m'))); };
+  dlg({e: '\u270F\uFE0F', t: 'Corregir consumo', s: t.nom,
+    html: '<label for="cs-m">Monto</label><input class="dlg-i" id="cs-m" type="number" inputmode="decimal" value="' + escHtml(bor.mto) + '" oninput="_csAviso()">' +
+      '<label for="cs-n">Nota</label><input class="dlg-i" id="cs-n" type="text" placeholder="Sin nota" value="' + escHtml(bor.nota) + '">' +
+      '<label for="cs-f">Fecha</label><input class="dlg-i" id="cs-f" type="date" min="' + rg.min + '" max="' + rg.max + '" value="' + escHtml(bor.fecha) + '">' +
+      '<div class="em-av" id="cs-av" style="display:none"></div>',
+    btns: [
+      {l: 'Guardar', c: 'p', f: function() {
+        var b = {mto: valEd('cs-m'), nota: valEd('cs-n'), fecha: valEd('cs-f')}, x = r2(parseFloat(b.mto));
+        if (isNaN(x) || x <= 0) { toast('Ingresa un monto válido'); dlgEditarConsumo(idx, id, b); return; }
+        if (b.fecha !== ymdLocal(new Date(c.fecha))) {
+          if (!/^\d{4}-\d\d-\d\d$/.test(b.fecha) || b.fecha < rg.min || b.fecha > rg.max) {
+            toast('La fecha debe ser del ' + Number(rg.min.slice(8)) + ' al ' + Number(rg.max.slice(8)) + ' de ' + MESES_NOM[rg.mes].toLowerCase());
+            dlgEditarConsumo(idx, id, b); return;
+          }
+          var od = new Date(c.fecha), p = b.fecha.split('-');
+          c.fecha = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), od.getHours(), od.getMinutes(), od.getSeconds(), od.getMilliseconds()).toISOString();
+        }
+        t.saldo = r2(base + x);
+        c.mto = x; c.nota = b.nota.trim();
+        guardar(); abrirSobre('deudas'); actualizarUI();
+        toast('Consumo corregido \u2713');
+      }},
+      {l: '\uD83D\uDDD1 Eliminar', c: 'd', f: function() { dlgEliminarConsumo(idx, id); }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]});
+  window._csAviso();
+}
+function dlgEliminarConsumo(idx, id) {
+  if (!exigirEscritura()) return; // modo consulta
+  var t = getTarjetas()[idx], c = t ? consumoPorId(t, id) : null;
+  if (!c) return;
+  if (mesEstaCerrado(c.periodo)) { avisoMesCerrado(c.periodo); return; }
+  var queda = r2((Number(t.saldo) || 0) - c.mto);
+  dlg({e: '\uD83D\uDDD1', t: 'Eliminar consumo', s: '¿Eliminar el consumo de ' + fmx(c.mto) + '? ' + (queda < 0 ? 'Quedarías con ' + fmx(-queda) + ' a favor.' : 'Tu deuda baja a ' + fmx(queda) + '.') + ' No se puede deshacer.',
+    btns: [
+      {l: 'Sí, eliminar', c: 'd', f: function() {
+        t.saldo = queda;
+        t.consumos = t.consumos.filter(function(x) { return x.id !== id; });
+        guardar(); abrirSobre('deudas'); actualizarUI();
+        toast('Consumo eliminado');
+      }},
+      {l: 'Cancelar', c: 's', f: null}
+    ]});
+}
+
+// ── Agregar a mi calendario (.ics, Bloque 10 · Fase d) ──
+// Evento de todo el día en la fecha de pago, con aviso un día antes a las 9:00. Sin montos.
+// El UID es fijo por pago, para que al volver a agregarlo se reemplace donde el calendario lo permita.
+function icsEsc(t) { return String(t).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); }
+function icsDoblar(l) {
+  var out = '', n = 0;
+  Array.from(l).forEach(function(ch) {
+    var b = encodeURIComponent(ch).replace(/%[0-9A-F]{2}/g, 'x').length;
+    if (n + b > 74) { out += '\r\n '; n = 1; }
+    out += ch; n += b;
+  });
+  return out;
+}
+function icsRRule(intervalo, dia, cuenta) {
+  var d = Number(dia) || 1, por = 'BYMONTHDAY=' + d;
+  // Días 29 a 31: en los meses cortos cae el último día del mes.
+  if (d >= 29) { var ds = []; for (var i = 28; i <= d; i++) ds.push(i); por = 'BYMONTHDAY=' + ds.join(',') + ';BYSETPOS=-1'; }
+  return 'RRULE:FREQ=MONTHLY' + (intervalo > 1 ? ';INTERVAL=' + intervalo : '') + (cuenta ? ';COUNT=' + cuenta : '') + ';' + por;
+}
+function fechaDelDia(anio, mes, dia) { return new Date(anio, mes, Math.min(dia, new Date(anio, mes + 1, 0).getDate())); }
+// La próxima fecha de pago desde hoy; con sigMes, desde el mes siguiente.
+function proximoDiaPago(dia, sigMes) {
+  var h = new Date(), h0 = new Date(h.getFullYear(), h.getMonth(), h.getDate()), m = h.getMonth() + (sigMes ? 1 : 0);
+  var f = fechaDelDia(h.getFullYear(), m, dia);
+  if (!sigMes && f < h0) f = fechaDelDia(h.getFullYear(), m + 1, dia);
+  return f;
+}
+function idCal(x) { return String(x.id || String(x.nom || 'pago').toLowerCase().replace(/[^a-z0-9]+/g, '-')); }
+function eventoServicio(s) {
+  if (!s.proxVenc) return {falta: 'Confirma la fecha de ' + s.nom + ' para agregarlo a tu calendario.'};
+  var m = mesesCicloSrv(s);
+  return {uid: 'servicio-' + idCal(s), nombre: s.nom, inicio: s.proxVenc, rrule: icsRRule(m, s.dia, 0), cada: m === 1 ? 'cada mes' : 'cada ' + m + ' meses'};
+}
+function eventoTarjeta(t) {
+  if (!t.diaPago) return {falta: 'Configura el día de pago de tu tarjeta'};
+  return {uid: 'tarjeta-' + idCal(t), nombre: t.nom, inicio: fechaLocalKey(proximoDiaPago(Number(t.diaPago))), rrule: icsRRule(1, t.diaPago, 0), cada: 'cada mes'};
+}
+function eventoMSI(m) {
+  var faltan = m.meses - (m.mesesPagados || 0), tc = getTarjetas().filter(function(t) { return m.tarjetaId && t.id === m.tarjetaId; })[0];
+  var dia = Number(m.diaPago) || (tc ? Number(tc.diaPago) : 0);
+  if (!(faltan > 0)) return {falta: m.nom + ' ya está terminado.'};
+  if (!dia) return {falta: 'Configura el día de pago de ' + m.nom};
+  return {uid: 'msi-' + idCal(m), nombre: m.nom, inicio: fechaLocalKey(proximoDiaPago(dia, msiPagadaEsteMes(m))), rrule: icsRRule(1, dia, faltan), cada: faltan === 1 ? 'un último aviso' : faltan + ' avisos, uno por mensualidad'};
+}
+function icsTexto(ev) {
+  var ahora = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z'), tit = icsEsc(ev.nombre + ' \u00B7 ¿A Dónde Se Fue?');
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//A Donde Se Fue//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
+    'UID:' + ev.uid + '@a-donde-se-fue', 'DTSTAMP:' + ahora, 'LAST-MODIFIED:' + ahora, 'SEQUENCE:' + Math.floor(Date.now() / 1000),
+    'DTSTART;VALUE=DATE:' + ev.inicio.replace(/-/g, ''), ev.rrule, 'SUMMARY:' + tit, 'TRANSP:TRANSPARENT',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + tit, 'TRIGGER:-PT15H', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].map(icsDoblar).join('\r\n') + '\r\n';
+}
+function dlgCalendario(ev) {
+  if (ev.falta) { dlg({e: '\uD83D\uDCC5', t: 'Agregar a mi calendario', s: ev.falta, btns: [{l: 'Entendido', c: 'p', f: null}]}); return; }
+  dlg({e: '\uD83D\uDCC5', t: 'Agregar a mi calendario', s: ev.nombre + ' \u00B7 ' + ev.cada,
+    inf: 'Te avisa un día antes a las 9:00.\nSi cambias la fecha, vuelve a agregarlo a tu calendario.',
+    btns: [{l: 'Agregar', c: 'p', f: function() { enviarIcs(ev); }}, {l: 'Cancelar', c: 's', f: null}]});
+}
+function enviarIcs(ev) {
+  var texto = icsTexto(ev), nombre = 'Pago-' + String(ev.nombre).normalize('NFD').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.ics';
+  var blob = new Blob([texto], {type: 'text/calendar;charset=utf-8'}), archivo = null;
+  window._ultimoIcs = {nombre: nombre, texto: texto};
+  var bajar = function() {
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
+    toast('Abre el archivo para agregarlo a tu calendario');
+  };
+  try { archivo = new File([blob], nombre, {type: 'text/calendar'}); } catch (e) {}
+  if (archivo && navigator.share && navigator.canShare && navigator.canShare({files: [archivo]})) {
+    navigator.share({files: [archivo], title: ev.nombre}).catch(function(err) { if (err && err.name === 'AbortError') return; bajar(); });
+  } else bajar();
+}
+
+// ── Cubrir un sobregiro desde varios sobres (Bloque 10 · Fase d) ──
+// Solo sobres de gasto. Nada se mueve hasta "Listo". Si no alcanza, el sobre sigue pasado por lo que falte.
+function dlgCubrirSobre(c) {
+  var fuentes = sobresDeGasto().filter(function(x) { return x.id !== c.destino && E.lims[x.id] > 0 && r2(limEfectivo(x.id) - calcGS(x.id)) > 0; });
+  var quedan = {}, elegidos = [];
+  fuentes.forEach(function(x) { quedan[x.id] = r2(limEfectivo(x.id) - calcGS(x.id)); });
+  var restante = function() { return r2(c.falta - elegidos.reduce(function(t, e) { return t + e.mto; }, 0)); };
+  var listo = function() {
+    if (!E.limsExtraMes) E.limsExtraMes = {};
+    elegidos.forEach(function(e) {
+      E.limsExtraMes[e.de] = r2((E.limsExtraMes[e.de] || 0) - e.mto);
+      E.limsExtraMes[c.destino] = r2((E.limsExtraMes[c.destino] || 0) + e.mto);
+    });
+    if (c.alListo) c.alListo(elegidos.map(function(e) { return {de: e.de, a: c.destino, mto: e.mto}; }));
+    guardar(); actualizarUI(); c.refrescar();
+    var r = restante();
+    toast(elegidos.map(function(e) { return fmx(e.mto) + ' de ' + e.cor; }).join(' y ') + ' a ' + c.nom + ' \u2713' + (r > 0 ? ' \u00B7 quedan ' + fmx(r) + ' sin cubrir' : ''));
+  };
+  var paso = function() {
+    var r = restante(), hay = elegidos.length > 0;
+    var btns = r > 0 ? fuentes.filter(function(x) { return !elegidos.some(function(e) { return e.de === x.id; }); }).map(function(x) {
+      return {l: x.ico + ' ' + x.cor + ' \u00B7 quedan ' + fmx(quedan[x.id]), c: 's', f: function() { monto(x); }};
+    }) : [];
+    if (hay) btns.unshift({l: 'Listo', c: 'p', f: listo});
+    if (!hay && !btns.length) { dlg({e: '\u26A0\uFE0F', t: c.titulo, s: c.texto + ' Ningún otro sobre tiene ' + fmx(c.falta) + ' disponibles.', btns: [{l: 'Entendido', c: 's', f: null}]}); return; }
+    btns.push({l: hay ? 'Cancelar' : 'Dejarlo así', c: 's', f: null});
+    if (!hay) dlg({e: '\u26A0\uFE0F', t: c.titulo, s: c.texto + ' ¿De dónde tomo los ' + fmx(c.falta) + '?', btns: btns});
+    else dlg({e: '\u26A0\uFE0F', t: c.titulo, s: r > 0 ? 'Quedan ' + fmx(r) + ' sin cubrir.' : 'Ya quedó cubierto.',
+      inf: elegidos.map(function(e) { return e.cor + ': ' + fmx(e.mto); }).join('\n'), btns: btns});
+  };
+  var monto = function(x) {
+    var r = restante(), max = Math.min(quedan[x.id], r);
+    dlg({e: x.ico, t: '¿Cuánto tomo de ' + x.cor + '?', s: 'Quedan ' + fmx(r) + ' por cubrir y ' + x.cor + ' tiene ' + fmx(quedan[x.id]) + '.', inp: true, ph: '$ Monto', md: 'decimal', val: max,
+      btns: [
+        {l: 'Siguiente \u2192', c: 'p', f: function(v) {
+          var m = r2(parseFloat(v));
+          if (!(m > 0) || m > max) { toast('Escribe un monto entre $0.01 y ' + fmx(max)); monto(x); return; }
+          elegidos.push({de: x.id, cor: x.cor, mto: m});
+          paso();
+        }},
+        {l: 'Atrás', c: 's', f: paso}
+      ]});
+  };
+  paso();
+}
+
+// Mi Historia y WhatsApp: las filas suman Salió; los pagos de préstamo van abajo. Sale de lo guardado al cerrar.
+function sobresSinPagos(item) {
+  var pg = Number(item.pagaste) || 0;
+  return (item.sobres || []).map(function(s) {
+    var x = Object.assign({}, s);
+    x.gs = Number(s.mto) || 0;
+    if (s.id === 'deudas') x.mto = r2(x.gs - pg);
+    return x;
+  }).filter(function(x) { return x.mto > 0; });
 }
 
 function dlgAbonarTarjeta(idx) {
@@ -9379,6 +9588,7 @@ function buildMSIBody(m, i) {
   // ── Acciones ─────────────────────────────────────
   html += '<div class="msi-acc">' +
     (!terminado ? '<button class="msi-btn pri" onclick="dlgPagarMSI(' + i + ')">✓ Registrar pago</button>' : '') +
+    (!terminado ? '<button class="msi-btn sec msi-cal" onclick="dlgCalendario(eventoMSI(getMSI()[' + i + ']))">&#x1F4C5; Calendario</button>' : '') +
     '<button class="msi-btn sec" onclick="dlgEditarMSI(' + i + ')">✏️ Editar</button>' +
     '<button class="msi-btn del" onclick="dlgEliminarMSI(' + i + ')">🗑</button>' +
   '</div>';
@@ -10828,22 +11038,8 @@ function ofrecerCubrirSobre(id) {
   var falta = r2(gas - lim);
   if (!(falta > 0)) return;
   var nomS = nombreSobreId(id);
-  var btns = sobresDeGasto().filter(function(x) {
-    return x.id !== id && E.lims[x.id] > 0 && r2(limEfectivo(x.id) - calcGS(x.id)) >= falta;
-  }).map(function(x) {
-    return {l:x.ico + ' ' + x.cor + ' · quedan ' + fmx(r2(limEfectivo(x.id) - calcGS(x.id))), c:'s', f:function(){
-      E.limsExtraMes[x.id] = r2((E.limsExtraMes[x.id] || 0) - falta);
-      E.limsExtraMes[id] = r2((E.limsExtraMes[id] || 0) + falta);
-      guardar(); actualizarUI(); renderSobres();
-      toast(fmx(falta) + ' de ' + x.cor + ' a ' + nomS + ' ✓');
-    }};
-  });
-  var hay = btns.length > 0;
-  btns.push({l:hay ? 'Dejarlo así' : 'Entendido', c:'s', f:null});
-  dlg({e:'\u26A0\uFE0F', t:nomS + ' se pasa de su límite',
-    s:nomS + ' ya gastó ' + fmx(gas) + ' y su límite queda en ' + fmx(lim) + '.' +
-      (hay ? ' ¿De dónde tomo los ' + fmx(falta) + '?' : ' Ningún otro sobre tiene ' + fmx(falta) + ' disponibles.'),
-    btns:btns});
+  dlgCubrirSobre({destino: id, nom: nomS, falta: falta, titulo: nomS + ' se pasa de su límite',
+    texto: nomS + ' ya gastó ' + fmx(gas) + ' y su límite queda en ' + fmx(lim) + '.', refrescar: renderSobres});
 }
 
 function dlgEditarMeta(i){
