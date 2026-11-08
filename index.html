@@ -181,6 +181,13 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
 .dlg-frm .em-av{font-size:12px;color:#C4704F;font-weight:600;margin-top:8px;line-height:1.4}
 .ss-ed{display:inline-block;margin-left:6px;font-size:11px;cursor:pointer;opacity:.75}
 .mv-dia{display:flex;justify-content:space-between;font-size:11px;color:#7D5F4E;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px;font-weight:600}
+.hp-fila{display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#3D2B1F;padding:6px 0;border-bottom:1px solid #F0E9DF}
+.hp-v{font-weight:700;white-space:nowrap}
+.hp-nota{font-size:11px;color:#7D5F4E;line-height:1.4;margin-top:2px}
+.hp-it{display:flex;justify-content:space-between;gap:10px;padding:6px 0 6px 8px;font-size:12px;color:#3D2B1F;border-bottom:1px dashed #F0E9DF}
+.hp-it-n{font-weight:600}
+.hp-falta{font-size:13px;font-weight:700;color:#C4704F;margin-top:10px}
+.hp-aviso{font-size:12px;color:#9A5B00;line-height:1.4;margin-top:8px}
 .mv-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
 .mv-chip{border:1.5px solid #E8DDD0;background:#fff;border-radius:99px;padding:4px 10px;font-size:11px;color:#6B4C3B;cursor:pointer;font-family:var(--fb)}
 .mv-chip.on{background:#C4704F;border-color:#C4704F;color:#fff}
@@ -944,6 +951,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#7D5F4E"><div style="width:10px;height:10px;border-radius:2px;background:#7A9E7E"></div>Ingresos</div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#7D5F4E"><div style="width:10px;height:10px;border-radius:2px;background:#C4704F"></div>Gastos</div>
       </div>
+      <div id="grf-falto" style="display:none;font-size:11px;font-weight:600;color:#C4704F;margin-top:8px;text-align:center"></div>
     </div>
     <div class="grf-w"><div class="grf-t">¿En qué se fue? 🔍</div><div id="desglose"></div></div>
     <div class="grf-w"><div class="grf-t">Balance del Mes</div><div id="balance"></div></div>
@@ -2024,14 +2032,6 @@ function actualizarUI() {
   var gasto = calcGT();
   var disp = r2(mtoTotal - gasto);
   var dia = new Date().getDate();
-  // "Hoy puedes": disponible entre los días que quedan del periodo, contando
-  // hoy (con el mes ya cerrado, el periodo es el siguiente). Hacia abajo al
-  // peso: es una guía de gasto, no un saldo.
-  var nPerU = ymNum(periodoActual());
-  var finPer = new Date(Math.floor(nPerU / 12), nPerU % 12 + 1, 0);
-  var hoy0 = new Date(new Date().getFullYear(), new Date().getMonth(), dia);
-  var rest = Math.max(1, Math.round((finPer - hoy0) / 864e5) + 1);
-
   var dMtoEl = document.getElementById('d-mto');
   if (dMtoEl) dMtoEl.innerHTML = fmxPeso(disp);
   var dmU = directoMetasMes(), retU = retirosMes(), cobU = cobrosMes();
@@ -2049,7 +2049,7 @@ function actualizarUI() {
   }
   mostrarDirectoMetas('d-dmet', dmU);
   st('d-sal', fmx(salioMes()));
-  st('d-hoy', fmx(Math.floor(Math.max(0, disp / rest))));
+  st('d-hoy', fmx(datosHoyPuedes().x));
   renderHeroSobres();
 
   // Mostrar banner de arrastre si existe
@@ -5119,7 +5119,7 @@ function calcGastoPorSemana(mes, anio) {
   var semanas = [0, 0, 0, 0];
   var ym = ymDeNum(anio*12 + mes);
   E.regs.forEach(function(r) {
-    if (periodoDe(r) !== ym) return;
+    if (periodoDe(r) !== ym || esPagoPrestamo(r)) return;
     var f = new Date(r.fecha);
     // Gasto de antes del día 1 (registrado tras un cierre anticipado): semana 1
     var dia = (f.getMonth() === mes && f.getFullYear() === anio) ? f.getDate() : 1;
@@ -5140,15 +5140,17 @@ function renderReportes() {
   var nPerR = ymNum(periodoActual());
   var diasMesPer = new Date(Math.floor(nPerR / 12), nPerR % 12 + 1, 0).getDate();
   var mto, gasto, dif, mg;
-  // Sin el efecto de los préstamos: en "Esta semana" van aparte, igual que en el Balance mensual.
-  var entSinPr = r2(entMes - efectoPrestamos(prestamosMes()));
+  // Mismo criterio que el Balance: Entró − Directo a metas. Lo que sobró el mes pasado no suma;
+  // el déficit sí resta del presupuesto semanal. Cobros, retiros y préstamos van aparte.
+  var EAR = entradaActual(), baseBarras = r2(EAR.entro - directoMetasMes());
+  var faltoAnt = EAR.arr && EAR.arr.neg ? EAR.arr.v : 0, baseSem = r2(baseBarras - faltoAnt);
   if (esSem) {
     // Calcular inicio de semana actual (lunes)
     var diasSem = hoy.getDay() === 0 ? 6 : hoy.getDay() - 1;
     var inicioSem = new Date(hoy); inicioSem.setDate(hoy.getDate() - diasSem); inicioSem.setHours(0,0,0,0);
     var regsSem = E.regs.filter(function(r){ return new Date(r.fecha) >= inicioSem; });
     gasto = r2(regsSem.filter(function(r){ return !esPagoPrestamo(r); }).reduce(function(s,r){ return s+(Number(r.mto)||0); }, 0));
-    mto = entSinPr > 0 ? r2(entSinPr * 7 / diasMesPer) : 0;
+    mto = baseSem > 0 ? r2(baseSem * 7 / diasMesPer) : 0;
   } else {
     mto = entMes;
     gasto = calcGT();
@@ -5159,7 +5161,7 @@ function renderReportes() {
   st('r-ent-lbl', esSem ? 'Presupuesto de la semana' : 'Entró');
   var rDesg = document.getElementById('r-desg');
   if (rDesg) {
-    var txtR = esSem ? (entSinPr > 0 ? 'Tu mes (' + fmx(entSinPr) + ') entre ' + diasMesPer + ' días, por 7' : '') : entradaActual().desg;
+    var txtR = esSem ? (baseSem > 0 ? 'Tu mes (' + fmx(baseSem) + ') entre ' + diasMesPer + ' días, por 7' : '') : entradaActual().desg;
     rDesg.textContent = txtR ? (esSem ? txtR : 'Entró: ' + txtR) : '';
     rDesg.style.display = txtR ? 'block' : 'none';
   }
@@ -5189,7 +5191,7 @@ function renderReportes() {
     var semGastos = calcGastoPorSemana(nPer % 12, Math.floor(nPer / 12));
     // Presupuesto de cada barra según sus días reales: 1-7, 8-14, 15-21 y 22-fin
     var diasBarras = [7, 7, 7, diasMesPer - 21];
-    var ingSems = diasBarras.map(function(d) { return r2(entMes * d / diasMesPer); });
+    var ingSems = diasBarras.map(function(d) { return r2(baseBarras * d / diasMesPer); });
     var maxG = Math.max.apply(null, semGastos.concat(ingSems).concat([1]));
     gb.innerHTML = ['Sem 1','Sem 2','Sem 3','Sem 4'].map(function(lbl, i) {
       var ingSem = ingSems[i];
@@ -5204,6 +5206,11 @@ function renderReportes() {
         '<div class="bv g" style="flex:1;height:' + pg + '%;background:' + colorG + ';opacity:' + (esPasada?'0.7':'1') + '"></div>' +
         '</div><div style="font-size:9px;color:#7D5F4E">' + lbl + '</div></div>';
     }).join('');
+  }
+  var grfF = document.getElementById('grf-falto');
+  if (grfF) {
+    grfF.textContent = faltoAnt > 0 ? EAR.arr.l + ' ' + fmx(faltoAnt) + ': por eso tu presupuesto semanal es menor' : '';
+    grfF.style.display = faltoAnt > 0 ? 'block' : 'none';
   }
   var ds=document.getElementById('desglose');
   if(ds){
@@ -5237,7 +5244,7 @@ function renderReportes() {
       '<div class="des-it" style="border-top:2px solid #F0E9DF;margin-top:3px;padding-top:12px">'+
       '<div style="font-size:20px;width:28px;text-align:center">'+(dif>=0?'✅':'⚠️')+'</div>'+
       '<div style="flex:1;font-size:13px;font-weight:600;color:#3D2B1F">Diferencia</div>'+
-      '<div style="font-size:17px;font-weight:700;color:'+(dif>=0?'#4E7A52':'#D9534F')+'">'+fmx(dif)+'</div></div>' + prestamosSemana(regsSem) : balanceMes()) + lineasAh;
+      '<div style="font-size:17px;font-weight:700;color:'+(dif>=0?'#4E7A52':'#D9534F')+'">'+fmx(dif)+'</div></div>' + apartesSemana(regsSem) : balanceMes()) + lineasAh;
   }
 }
 
@@ -5265,15 +5272,15 @@ function balanceMes() {
     '<div class="bal-v" style="font-size:17px;font-weight:700;color:' + (pos ? '#4E7A52' : '#C4704F') + '">' + fmx(Math.abs(R.dif)) + '</div></div>';
   return h;
 }
-// Esta semana: los préstamos van aparte; no cuentan en el presupuesto, en Salió ni en la Diferencia.
-function prestamosSemana(regs) {
+// Esta semana: cobros, retiros y préstamos van aparte; no cuentan en el presupuesto, en Salió ni en la Diferencia.
+function apartesSemana(regs) {
   var o = prestamosDe(regs);
-  var filas = [['Te pagaron un préstamo', o.cobro, true], ['Te prestaron', o.recibido, true], ['Prestaste', o.prestaste, false], ['Pagaste un préstamo', o.pagaste, false]]
-    .filter(function(x) { return x[1] > 0; });
+  var filas = [['Cobro de tanda', cobrosDe(regs).tot, true], ['Retiro de ahorro', retirosDe(regs), true], ['Te pagaron un préstamo', o.cobro, true], ['Te prestaron', o.recibido, true],
+    ['Prestaste', o.prestaste, false], ['Pagaste un préstamo', o.pagaste, false]].filter(function(x) { return x[1] > 0; });
   if (!filas.length) return '';
-  return '<div style="font-size:11px;color:#7D5F4E;margin:10px 0 2px">Préstamos de la semana (aparte: no cuentan en la Diferencia)</div>' +
+  return '<div style="font-size:11px;color:#7D5F4E;margin:10px 0 2px">Aparte, esta semana (no cuentan en la Diferencia)</div>' +
     filas.map(function(x) {
-      return '<div class="des-it bal-it" data-l="' + x[0] + '"><div style="font-size:20px;width:28px;text-align:center">\uD83D\uDCB8</div>' +
+      return '<div class="des-it bal-it" data-l="' + x[0] + '"><div style="font-size:20px;width:28px;text-align:center">' + (ICO_BAL[x[0]] || '+') + '</div>' +
         '<div style="flex:1;font-size:13px;color:#3D2B1F">' + x[0] + '</div>' +
         '<div class="bal-v" style="font-size:13px;font-weight:600;color:' + (x[2] ? '#4E7A52' : '#7D5F4E') + '">' + (x[2] ? '+' + fmx(x[1]) : fmx(-x[1])) + '</div></div>';
     }).join('');
@@ -6778,6 +6785,7 @@ function movsDeDet(movs) {
       else if (mv.t === 'ingreso') r.desc = mv.n || 'Ingreso extra';
       else r.desc = (mv.meta ? 'De ' + mv.meta : r.sobre);
       if (mv.t === 'prCobro' || mv.t === 'prRecibido' || mv.t === 'prPrestaste') r.desc = mv.n || r.sobre;
+      if (mv.t === 'ingreso') r.sumaEntro = true;
       if (mv.t === 'ingreso' || mv.t === 'cobro' || mv.t === 'retiro' || mv.t === 'prCobro' || mv.t === 'prRecibido') r.entra = mv.e;
       else if (mv.t === 'prPrestaste') { r.sale = mv.e; r.prestamo = true; }
       else r.desc += ': ' + pdfMonto(mv.e);
@@ -6793,6 +6801,17 @@ function movsDeDet(movs) {
     }
     return r;
   });
+}
+// Reporte completo: el ingreso no es un movimiento, así que va como primer renglón, con fecha del día 1.
+// El extra sin movimiento (versiones anteriores) va en su propio renglón para que la columna coincida con Entró.
+function movsConIngreso(det, item) {
+  var movs = movsDeDet(det.movs), EI = entradaDe(item);
+  if (EI.ing === null || !det.ym) return movs;
+  var f = det.ym + '-01', extras = r2(movs.reduce(function(t, x) { return t + (x.sumaEntro ? x.entra || 0 : 0); }, 0));
+  var sinMov = r2(EI.entro - EI.ing - extras);
+  if (sinMov > 0) movs.unshift({fecha: fechaCortaIso(f), f: f, sobre: 'Ingreso extra', desc: 'Extra del mes', entra: sinMov, sumaEntro: true});
+  if (EI.ing > 0) movs.unshift({fecha: fechaCortaIso(f), f: f, sobre: 'Ingreso', desc: 'Ingreso del mes', entra: EI.ing, sumaEntro: true});
+  return movs;
 }
 function fechaCortaIso(f) {
   var p = String(f || '').split('-');
@@ -6835,7 +6854,7 @@ function construirModeloReporte(item, tipo) {
     return {serv: a.serv, mov: (LBL_AP[a.t] || a.t) + (a.t === 'ajusteRecibo' && a.m < 0 ? ' (a tu favor)' : ''), det: sub,
       mto: Math.abs(a.m), signo: a.m < 0 ? -1 : 1, suma: a.t !== 'pago'};
   }) : [];
-  m.movs = det ? movsDeDet(det.movs) : [];
+  m.movs = det ? movsConIngreso(det, item) : [];
   m.tarjetas = det ? det.tarjetas.map(function(t) { return {nom: t.nom, saldo: t.saldo, minimo: t.min, plan: t.plan, estimada: t.est}; }) : [];
   m.msi = det ? det.msi.map(function(x) { return {desc: x.nom, tarjeta: x.tc || 'Sin tarjeta', mens: x.mens, n: x.n, tot: x.tot, resta: x.resta}; }) : [];
   m.prestamos = det ? det.prestamos.map(function(p) {
@@ -7097,13 +7116,16 @@ function construirPDFReporte(jsPDF, R, modelo) {
   else if (modelo.tipo === 'completo' && modelo.movs.length) (function() {
     var cols = [{t: 'Fecha', w: 54}, {t: 'Descripción', w: 196}, {t: 'Sobre', w: 110}, {t: 'Salió', w: 78, al: 'r'}, {t: 'Entró', w: CW - 438, al: 'r'}];
     // Los préstamos llevan su monto en la columna, pero están fuera de Salió: el total no los suma.
-    var ts = 0, hayPr = false;
+    var ts = 0, te = 0, hayPr = false, hayIng = false, noSuma = false;
     var filas = modelo.movs.map(function(mv) {
       if (mv.prestamo) hayPr = true; else ts += mv.sale || 0;
+      if (mv.sumaEntro) { te += mv.entra || 0; hayIng = true; }
+      else if (mv.entra !== undefined) noSuma = true;
       return [{txt: mv.fecha, color: PDF_COL.sec}, mv.desc, {txt: mv.sobre, color: PDF_COL.sec},
         mv.sale !== undefined ? mv.sale : '', mv.entra !== undefined ? mv.entra : ''];
     });
-    tabla('Movimientos por fecha', cols, filas, ['Total', hayPr ? 'sin préstamos' : '', '', r2(ts), '']);
+    tabla('Movimientos por fecha', cols, filas, ['Total', hayPr ? 'sin préstamos' : '', '', r2(ts), hayIng ? r2(te) : ''],
+      hayIng && noSuma ? 'Entró suma solo ingreso y extra. Cobros, retiros y préstamos se ven, pero no se suman.' : undefined);
   })();
 
   // 5. Tarjetas y MSI
@@ -7443,22 +7465,89 @@ function irMesAnteriorHistoria() {
   if (b && !b.classList.contains('open')) toggleHistoria(i);
   if (b && b.parentNode && b.parentNode.scrollIntoView) b.parentNode.scrollIntoView();
 }
-// "Hoy puedes": disponible entre los días que quedan del periodo, contando hoy; hacia abajo al peso.
+// ── Pagos programados que faltan este mes (Bloque 10 · Fase c-1b) ──
+// Servicios: cada recibo sin pagar hasta el fin del periodo, vencidos incluidos; con fondo,
+// solo lo que falte (lo apartado ya salió del Disponible). Tarjetas: lo que planeas pagar
+// (o el mínimo) menos lo pagado este mes, sin las mensualidades MSI. MSI: la mensualidad si
+// no se ha pagado este mes. Al pagar, baja el Disponible y baja igual lo pendiente.
+function pagosPendientesMes() {
+  var per = periodoActual(), n = ymNum(per), hoy = new Date();
+  var fin = fechaLocalKey(new Date(Math.floor(n / 12), n % 12 + 1, 0)), hoyK = fechaLocalKey(hoy);
+  var items = [], avisos = [];
+  var aviso = function(t) { if (avisos.indexOf(t) === -1) avisos.push(t); };
+  (E.servicios || []).forEach(function(s) {
+    if (!s.proxVenc) { aviso('Confirma la fecha de ' + s.nom + ': todavía no se resta.'); return; }
+    var est = Number(s.mto) || 0, v = s.proxVenc, m = mesesCicloSrv(s);
+    if (!est) { if (v <= fin) aviso(s.nom + ' no tiene monto: todavía no se resta.'); return; }
+    for (var i = 0; i < 24 && v <= fin; i++) {
+      var fondo = usaFondo(s) ? fondoDe(s, v) : 0, falta = Math.max(0, r2(est - fondo));
+      if (falta > 0) items.push({tipo: 'servicio', nom: s.nom, mto: falta,
+        por: (v < hoyK ? 'Vencido, sin marcar como pagado' : 'Vence el ' + fechaCorta(v + 'T12:00:00')) + (fondo > 0 ? ' · falta del fondo' : '')});
+      v = sumarMesesVenc(v, m, s.dia);
+    }
+  });
+  getTarjetas().forEach(function(t) {
+    var pagado = r2((t.pagos || []).reduce(function(a, p) {
+      if ((p.periodo || ymDe(p.fecha)) !== per || p.regId === null || p.regId === undefined) return a;
+      var r = regPorId(p.regId);
+      return a + (r ? Number(r.mto) || 0 : 0);
+    }, 0));
+    // Saldo antes de los pagos del mes: así el mínimo no cambia al abonar.
+    var saldoIni = r2((Number(t.saldo) || 0) + pagado);
+    if (saldoIni <= 0) return;
+    var plan = pagoPlanTC(t), base = plan > 0 ? plan : minimoTC(saldoIni, tasaTC(t), t.limite);
+    var falta = Math.max(0, r2(Math.min(saldoIni, base) - pagado));
+    if (!(falta > 0)) return;
+    var dp = Number(t.diaPago) || 0, pasoDia = dp && ymDe(hoy) === per && hoy.getDate() > dp;
+    items.push({tipo: 'tarjeta', nom: t.nom, mto: falta,
+      por: (plan > 0 ? (pagado > 0 ? 'Falta de lo que planeas pagar' : 'Lo que planeas pagar') : (pagado > 0 ? 'Falta del mínimo' : 'Mínimo del banco')) +
+        ' · ' + (dp ? (pasoDia ? 'Venció el día ' : 'Vence el día ') + dp : 'Sin día de pago')});
+    if (!plan) aviso('Restamos el mínimo (' + fmx(base) + '). Pagar solo el mínimo genera intereses: captura lo que planeas pagar.');
+    if (!dp) aviso('Configura el día de pago de tu tarjeta');
+  });
+  getMSI().forEach(function(m) {
+    var hechas = m.mesesPagados || 0;
+    if (hechas >= m.meses) return;
+    var pagada = E.regs.some(function(r) {
+      if (periodoDe(r) !== per || r.sobre !== 'deudas') return false;
+      if (r.origen) return r.origen.tipo === 'msi' && r.origen.id === m.id;
+      var x = msiDeNota(r);
+      return !!x && x.m === m;
+    });
+    if (!pagada) items.push({tipo: 'msi', nom: m.nom, mto: pagoMSI(m), por: 'Mensualidad ' + (hechas + 1) + ' de ' + m.meses});
+  });
+  return {items: items, avisos: avisos, total: r2(items.reduce(function(a, x) { return a + x.mto; }, 0))};
+}
+// "Hoy puedes": (Disponible − pagos pendientes) entre los días que quedan del periodo, contando hoy; hacia abajo al peso.
 function datosHoyPuedes() {
-  var disp = r2(calcDisponibleMes() - calcGT());
+  var disp = r2(calcDisponibleMes() - calcGT()), pend = pagosPendientesMes(), neto = r2(disp - pend.total);
   var nPer = ymNum(periodoActual());
   var fin = new Date(Math.floor(nPer / 12), nPer % 12 + 1, 0);
   var hoy = new Date(), hoy0 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
   var rest = Math.max(1, Math.round((fin - hoy0) / 864e5) + 1);
-  return {disp: disp, rest: rest, fin: fin, x: Math.floor(Math.max(0, disp / rest))};
+  return {disp: disp, pend: pend, neto: neto, rest: rest, fin: fin, x: Math.floor(Math.max(0, neto / rest)), falta: neto < 0 ? r2(-neto) : 0};
 }
+function sumaTipoPend(items, tipo) { return r2(items.reduce(function(a, x) { return a + (x.tipo === tipo ? x.mto : 0); }, 0)); }
 function dlgHoyPuedes() {
-  var d = datosHoyPuedes();
-  var lin = ['Disponible ' + fmx(d.disp),
-    '÷ ' + d.rest + (d.rest === 1 ? ' día que queda' : ' días que quedan') + ' (de hoy al ' + d.fin.getDate() + ' de ' + MESES_NOM[d.fin.getMonth()].toLowerCase() + ', contando hoy)',
-    d.disp > 0 ? '= ' + fmx(r2(d.disp / d.rest)) + ' → ' + fmx(d.x) + ' (hacia abajo al peso)' : '= $0: ya no te queda disponible este mes',
-    '', 'Todavía no descuenta los pagos programados que faltan este mes (servicios, tarjetas y MSI).'];
-  dlg({e: '\uD83D\uDCC6', t: 'Hoy puedes ' + fmx(d.x), inf: lin.join('\n'), btns: [{l: 'Entendido', c: 'p', f: null}]});
+  var d = datosHoyPuedes(), it = d.pend.items, tc = sumaTipoPend(it, 'tarjeta'), ms = sumaTipoPend(it, 'msi');
+  var fila = function(l, v, attrs) { return '<div class="hp-fila"' + (attrs || '') + '><span>' + l + '</span><span class="hp-v">' + v + '</span></div>'; };
+  var html = fila('Disponible', fmx(d.disp), ' id="hp-disp"');
+  html += fila('Pagos pendientes de este mes' + (it.length ? ' \u203A' : ''), d.pend.total > 0 ? fmx(-d.pend.total) : '$0',
+    ' id="hp-pend"' + (it.length ? ' role="button" style="cursor:pointer" onclick="togHpLista()"' : ''));
+  if (tc > 0 || ms > 0) html += '<div class="hp-nota" id="hp-tcmsi">' + [tc > 0 ? 'Tarjeta: ' + fmx(tc) : '', ms > 0 ? 'MSI ' + fmx(ms) : ''].filter(function(x) { return x; }).join(' + ') + '</div>';
+  html += '<div id="hp-lista" style="display:none">' + it.map(function(x) {
+    return '<div class="hp-it"><div><div class="hp-it-n">' + escHtml(x.nom) + '</div><div class="hp-nota">' + escHtml(x.por) + '</div></div><div class="hp-v">' + fmx(x.mto) + '</div></div>';
+  }).join('') + '</div>';
+  if (d.neto > 0) html += fila(fmx(d.neto) + ' \u00F7 ' + d.rest + (d.rest === 1 ? ' día' : ' días'), fmx(r2(d.neto / d.rest)) + ' \u2192 ' + fmx(d.x), ' id="hp-cuenta"') +
+    '<div class="hp-nota">De hoy al ' + d.fin.getDate() + ' de ' + MESES_NOM[d.fin.getMonth()].toLowerCase() + ', contando hoy; hacia abajo al peso.</div>';
+  else if (d.falta > 0) html += '<div class="hp-falta" id="hp-falta">Te faltan ' + fmx(d.falta) + ' para tus pagos del mes</div>';
+  else html += fila('No te queda para gastar este mes', '$0', ' id="hp-cuenta"');
+  html += d.pend.avisos.map(function(a) { return '<div class="hp-aviso">' + escHtml(a) + '</div>'; }).join('');
+  dlg({e: '\uD83D\uDCC6', t: 'Hoy puedes ' + fmx(d.x), html: html, btns: [{l: 'Entendido', c: 'p', f: null}]});
+}
+function togHpLista() {
+  var l = document.getElementById('hp-lista');
+  if (l) l.style.display = l.style.display === 'none' ? 'block' : 'none';
 }
 function txtArrastre(a) { return a ? a.l + ' ' + fmx(a.v) + (a.nota ? ' (' + a.nota + ')' : '') : ''; }
 function mostrarArrastre(elId, a, conColor) {
@@ -8629,6 +8718,15 @@ function dlgTCDia(idx, campo) {
     ]
   });
 }
+// Campo de lo que planeas pagar: las mensualidades MSI de esta tarjeta van por separado.
+function msiMensualDeTC(t) {
+  return r2(getMSI().filter(function(m) { return m.tarjetaId && m.tarjetaId === t.id && (m.mesesPagados || 0) < m.meses; })
+    .reduce(function(a, m) { return a + pagoMSI(m); }, 0));
+}
+function txtCampoPlanTC(t) {
+  var x = msiMensualDeTC(t);
+  return x > 0 ? 'Lo que planeas pagar, sin tus mensualidades MSI (' + fmx(x) + ')' : '';
+}
 function dlgTCPlan(idx) {
   if (!exigirEscritura()) return; // modo consulta
   var t = getTarjetas()[idx];
@@ -8637,7 +8735,8 @@ function dlgTCPlan(idx) {
   dlg({
     e: '\uD83D\uDCB0', t: '¿Cuánto planeas pagar al mes?',
     s: min ? 'El mínimo de este mes es ' + fmx(min) + ' (regla de Banxico, sin tus MSI).' : 'Hoy no debes nada en esta tarjeta.',
-    inp: true, ph: '$ Lo que planeas pagar al mes', md: 'decimal', val: pagoPlanTC(t) || '',
+    inf: txtCampoPlanTC(t),
+    inp: true, ph: txtCampoPlanTC(t) || '$ Lo que planeas pagar al mes', md: 'decimal', val: pagoPlanTC(t) || '',
     btns: [
       {l: 'Guardar', c: 'p', f: function(v) {
         var val = r2(parseFloat(v));
