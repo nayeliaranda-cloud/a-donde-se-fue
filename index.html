@@ -869,6 +869,11 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div style="flex:1"><div class="ban-tit">Mi agenda de pagos</div><div class="ban-sub" id="agenda-resumen">Servicios, tarjetas y MSI en un solo lugar</div></div>
       <div style="font-size:15px;color:rgba(255,255,255,.8)">›</div>
     </div>
+    <div class="ban" id="ban-respaldo" style="display:none;background:linear-gradient(135deg,#7A9E7E,#4E7A52);margin-bottom:12px" onclick="respaldar()">
+      <div style="font-size:22px">&#x1F4BE;</div>
+      <div style="flex:1"><div class="ban-tit">Hace más de 30 días que no respaldas</div><div class="ban-sub">Toca para guardar una copia de tu información</div></div>
+      <div style="font-size:15px;color:rgba(255,255,255,.8);padding:0 4px" role="button" aria-label="Cerrar" onclick="event.stopPropagation();this.parentNode.style.display='none'">&#x2715;</div>
+    </div>
     <!-- Banner saldo arrastrado -->
     <div id="ban-arrastre" style="display:none;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:12px;margin-bottom:12px">
       <div id="arr-ico" style="font-size:18px;flex-shrink:0">✅</div>
@@ -1005,6 +1010,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
         💡 Guarda tu respaldo en <strong>Favoritos de WhatsApp</strong> para recuperarlo si cambias de cel
       </div>
       <div class="cfg-i" onclick="dlgEditarPerfil()"><div class="cfg-ico">&#x270F;&#xFE0F;</div><div class="cfg-tx"><div class="cfg-n">Editar mi perfil</div><div class="cfg-s">Nombre y cumpleaños</div></div><div>›</div></div>
+      <div class="cfg-i" id="cfg-borrar" onclick="dlgBorrarTodo()"><div class="cfg-ico">&#x1F5D1;</div><div class="cfg-tx"><div class="cfg-n">Borrar todos mis datos</div><div class="cfg-s">De este dispositivo; tu prueba y licencia se conservan</div></div><div>›</div></div>
       <div class="cfg-i" onclick="document.getElementById('mo-acerca').classList.add('on')"><div class="cfg-ico">ℹ️</div><div class="cfg-tx"><div class="cfg-n">Acerca de la app</div><div class="cfg-s">Versión, privacidad y contacto</div></div><div>›</div></div>
     </div>
   </div>
@@ -1328,6 +1334,7 @@ var avSel='👩', galIco='⭐', galCB=null, galCat=0, wizTipo='fijo';
 
 // ════ INIT ════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function() {
+  pedirPersistencia();
   // Llenar días
   var sd = document.getElementById('w-dia');
   for (var i = 1; i <= 31; i++) {
@@ -1700,6 +1707,9 @@ function wRecalc() {
   if (rt) rt.textContent = fmx(mto);
 }
 
+var CAMPOS_LICENCIA = ['prem','premTipo','fechaPrem','fechaExpPrem','diasPrem','premExpiradoAviso',
+  'codigosUsados','lsLicenseKey','lsInstanceId','horaServidorOffset','horaServidorSync',
+  'maxHoraVista','pruebaInicio','pruebaFin','pruebaAvisoInicio','pruebaAvisoFin'];
 function dlgRestaurar() {
   var mo = document.createElement('div');
   mo.id = 'mo-rest';
@@ -1785,9 +1795,6 @@ function restProcesar() {
       {l:'Si, recuperar todo', c:'p', f:function(){
         // Licencia, prueba y reloj NUNCA se toman del respaldo (un respaldo
         // editado o prestado no debe dar acceso): se conservan los del dispositivo.
-        var CAMPOS_LICENCIA = ['prem','premTipo','fechaPrem','fechaExpPrem','diasPrem','premExpiradoAviso',
-          'codigosUsados','lsLicenseKey','lsInstanceId','horaServidorOffset','horaServidorSync',
-          'maxHoraVista','pruebaInicio','pruebaFin','pruebaAvisoInicio','pruebaAvisoFin'];
         var iniDisp = E.pruebaInicio ? new Date(E.pruebaInicio).getTime() : NaN;
         var iniResp = parsed.pruebaInicio ? new Date(parsed.pruebaInicio).getTime() : NaN;
         if (!isNaN(iniResp)) iniResp = Math.min(iniResp, ahora().getTime()); // nunca en el futuro
@@ -1901,6 +1908,7 @@ function iniciarApp() {
   renderMetasRes();
   irA('p-ini');
   mostrarInstall();
+  revisarRecordatorioRespaldo();
   if (!E.pruebaAvisoInicio && !tieneLicencia() && puedeEscribir()) {
     mostrarCuandoLibre(function() { avisoInicioPrueba(chkCumpleRetro); });
   } else if (debeAvisarFinPrueba()) {
@@ -5633,6 +5641,78 @@ function activarLicenciaLemonSqueezy(licenseKey){
   });
 }
 
+// ── Protección de datos (Bloque 9 · Parte b) ──
+function pedirPersistencia() {
+  try {
+    if (navigator.storage && navigator.storage.persist) {
+      var p = navigator.storage.persist();
+      if (p && p.catch) p.catch(function() {});
+    }
+  } catch (e) {}
+}
+// En modo consulta no se escribe nada: tampoco la marca del respaldo.
+function marcarRespaldo() {
+  if (!puedeEscribir()) return;
+  E.ultimoRespaldo = new Date().toISOString();
+  guardar();
+  var b = document.getElementById('ban-respaldo');
+  if (b) b.style.display = 'none';
+}
+function descargarRespaldo() {
+  var texto = JSON.stringify(E, null, 2), hoy = fechaLocalKey(new Date()), nombre = 'Respaldo-A-Donde-Se-Fue-' + hoy + '.json';
+  var blob = new Blob([texto], {type: 'application/json'}), archivo = null;
+  window._ultimoRespaldo = {nombre: nombre, texto: texto};
+  marcarRespaldo();
+  var bajar = function() {
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
+    toast('Respaldo descargado: ' + nombre);
+  };
+  try { archivo = new File([blob], nombre, {type: 'application/json'}); } catch (e) {}
+  if (archivo && navigator.share && navigator.canShare && navigator.canShare({files: [archivo]})) {
+    navigator.share({files: [archivo], title: nombre}).catch(function(err) { if (err && err.name === 'AbortError') return; bajar(); });
+  } else bajar();
+}
+// Más de 30 días sin respaldo (o desde que empezó, si nunca ha hecho uno): un aviso por semana.
+function debeRecordarRespaldo() {
+  if (!puedeEscribir() || !(E.regs || []).length) return false;
+  var h = ahora().getTime(), base = E.ultimoRespaldo || E.pruebaInicio;
+  if (!base || h - new Date(base).getTime() <= 30 * 864e5) return false;
+  if (!E.recRespaldo) return true;
+  // Por días de calendario: la hora del día en que abre la app no cuenta.
+  var dia = function(f) { var d = new Date(f); return Math.round(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 864e5); };
+  return dia(h) - dia(E.recRespaldo) >= 7;
+}
+function revisarRecordatorioRespaldo() {
+  if (!debeRecordarRespaldo()) return;
+  E.recRespaldo = ahora().toISOString();
+  guardar();
+  var b = document.getElementById('ban-respaldo');
+  if (b) b.style.display = 'flex';
+}
+// Borrar todo: se conservan la prueba, la licencia y el reloj, para que borrar no reinicie los 35 días.
+function dlgBorrarTodo() {
+  dlg({e: '\uD83D\uDDD1', t: 'Borrar todos mis datos',
+    s: 'Se borran de este dispositivo tus gastos, sobres, metas, tarjetas, préstamos, tandas, servicios y Mi Historia. No se puede deshacer.',
+    btns: [
+      {l: 'Hacer respaldo primero', c: 'p', f: function() { respaldar(); }},
+      {l: 'Continuar sin respaldo', c: 'd', f: dlgBorrarTodo2},
+      {l: 'Cancelar', c: 's', f: null}
+    ]});
+}
+function dlgBorrarTodo2() {
+  dlg({e: '\u26A0\uFE0F', t: '¿Borrar todo definitivamente?', s: 'Tu prueba y tu licencia se conservan. La app volverá a empezar desde cero.',
+    btns: [{l: 'Sí, borrar todo', c: 'd', f: borrarTodo}, {l: 'Cancelar', c: 's', f: null}]});
+}
+function borrarTodo() {
+  ahora(); // actualiza E.maxHoraVista
+  var queda = {};
+  CAMPOS_LICENCIA.forEach(function(c) { if (E[c] !== undefined) queda[c] = E[c]; });
+  try { localStorage.setItem('adsf4', JSON.stringify(queda)); } catch (e) { toast('No se pudo borrar. Intenta de nuevo.'); return; }
+  window.location.reload();
+}
+
 function respaldar(){
   var res=JSON.stringify(E,null,2);
   var titulo='Respaldo A Donde Se Fue '+new Date().toLocaleDateString('es-MX');
@@ -5641,15 +5721,19 @@ function respaldar(){
     btns:[
       {l:'💬 WhatsApp',c:'p',f:function(){
         var txt='💾 *Respaldo ¿A Dónde Se Fué?*\n'+new Date().toLocaleDateString('es-MX')+'\n\nRegistros: '+E.regs.length+'\nGasto total: '+fmx(calcGT())+'\n\n_Guarda este mensaje en tus favoritos de WhatsApp para no perderlo._\n\n'+res;
+        marcarRespaldo();
         window.location.href = 'https://wa.me/?text='+encodeURIComponent(txt);
         toast('Abriendo WhatsApp 💬');
       }},
       {l:'📧 Correo',c:'s',f:function(){
+        marcarRespaldo();
         window.open('mailto:?subject='+encodeURIComponent(titulo)+'&body='+encodeURIComponent(cuerpo));
         toast('Abriendo correo 📧');
       }},
+      {l:'\uD83D\uDCC1 Descargar archivo (.json)',c:'s',f:descargarRespaldo},
       {l:'📋 Copiar texto',c:'s',f:function(){
         var txt='💾 *Respaldo ¿A Dónde Se Fué?*\n'+new Date().toLocaleDateString('es-MX')+'\n\nRegistros: '+E.regs.length+'\nGasto total: '+fmx(calcGT())+'\n\n'+res;
+        marcarRespaldo();
         copiarTexto(txt, 'Respaldo copiado — pégalo donde lo quieras guardar 📋');
       }},
       {l:'Cancelar',c:'s',f:null}
@@ -11511,6 +11595,7 @@ function mostrarAnalisisInicial() {
     <button class="bi-tab" onclick="biTab('datos',this)">💾 Mis datos</button>
   </div>
   <div class="bi-content on" id="bi-ios">
+    <div class="bi-sub" id="bi-ios-prot" style="color:#6B4C3B;margin-bottom:8px">En iPhone, instalarla también protege tu información: Safari puede borrar los datos de las páginas que no abres seguido.</div>
     <div class="bi-steps">
       <div class="bi-step">1. Toca el botón <strong>Compartir</strong> ↑ abajo en Safari</div>
       <div class="bi-step">2. Baja y toca <strong>"Agregar a pantalla de inicio"</strong></div>
