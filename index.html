@@ -1166,6 +1166,13 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div class="fi-it"><span class="fi-ck">✓</span>Tus datos siguen solo en tu celular</div>
       <div class="fi-it"><span class="fi-ck">✓</span>Actualizaciones futuras incluidas</div>
     </div>
+    <div class="prem-fs" id="prem-pasos">
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#7D5F4E;margin-bottom:4px">Cómo comprar</div>
+      <div class="fi-it"><span class="fi-ck">1</span>Toca Comprar y paga en la página segura de Lemon Squeezy.</div>
+      <div class="fi-it"><span class="fi-ck">2</span>Te llega un correo con tu código de licencia. Si no lo ves en unos minutos, revisa spam o Promociones.</div>
+      <div class="fi-it"><span class="fi-ck">3</span>Regresa a la app, toca "Ya compré, tengo mi código" y pégalo.</div>
+      <div style="font-size:12px;color:#7D5F4E;margin-top:6px;line-height:1.4">En iPhone el pago se abre en Safari: cuando termines, regresa a la app.</div>
+    </div>
     <div class="prem-bs">
       <button class="btn-prem" id="prem-comprar" onclick="irLemon()">Comprar — $199 MXN pago único</button>
       <button class="btn-cod" id="prem-codigo" onclick="dlgCodigo()">Ya compré, tengo mi código</button>
@@ -1187,7 +1194,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
       <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--crd)"><span>Desarrollado por</span><strong style="color:var(--ca)">Nayeli Huerta Camacho</strong></div>
       <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--crd)"><span>Versión</span><strong style="color:var(--te)">1.0.0</strong></div>
       <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--crd)"><span>Plataforma</span><strong style="color:var(--ca)">Web PWA · iOS · Android</strong></div>
-      <div style="display:flex;justify-content:space-between;padding:9px 0"><span>Contacto</span><strong style="color:var(--te);word-break:break-all">adondesefuefinanzaspersonales@gmail.com</strong></div>
+      <div style="display:flex;justify-content:space-between;padding:9px 0"><span>Contacto</span><strong style="color:var(--te);word-break:break-all">adondesefueapp@gmail.com</strong></div>
     </div>
     <div style="background:var(--crd);border-radius:12px;padding:14px;margin-top:16px">
       <div style="font-weight:700;font-size:13.5px;color:var(--ca);margin-bottom:6px">🔒 Tu privacidad</div>
@@ -1499,11 +1506,46 @@ function mostrarCuandoLibre(fn, intentos) {
 }
 // Aviso único "Tu prueba comenzó". Al cerrarlo sigue con "despues" (p. ej. el
 // aviso de cumpleaños), para que un diálogo no tape al otro.
+// ── Recordatorios de la prueba (Bloque 9 · Parte d) ──
+var RE_MOV_AUTO = /\s—\s(apartado|Fondo liberado)/;
+// El dato real del mes: con 10 gastos o más el mes en curso; si no, el mes anterior ya cerrado con 10 o más; si ninguno, nada.
+function datoMesPrueba() {
+  var n = movsDelMes().filter(function(r) { return !RE_MOV_AUTO.test(r.nota || ''); }).length;
+  var ym = ymNum(periodoActual());
+  if (n >= 10) {
+    var d = r2(calcDisponibleMes() - calcGT());
+    return 'En ' + MESES_NOM[ym % 12].toLowerCase() + ' llevas ' + n + ' gastos registrados y ' + (d >= 0 ? 'te sobra ' : 'te falta ') + fmx(Math.abs(d)) + '.';
+  }
+  var ix = idxMesAnteriorHistoria(), h = ix >= 0 ? E.historial[ix] : null;
+  if (!h || !h.det || !h.det.movs) return '';
+  var m = h.det.movs.filter(function(v) { return v.m !== undefined && !v.pr && !RE_MOV_AUTO.test(v.n || ''); }).length;
+  if (m < 10) return '';
+  return 'En ' + MESES_NOM[h.mesIdx].toLowerCase() + ' registraste ' + m + ' gastos y ' + (h.dif >= 0 ? 'te sobró ' : 'te faltó ') + fmx(Math.abs(h.dif)) + '.';
+}
+function textoRecordatorioPrueba(dias) {
+  var hoy = fechaLocalKey(ahora()) === fechaLocalKey(new Date(E.pruebaFin));
+  var ini = dias > 1 ? 'Te quedan ' + dias + ' días de prueba.' : hoy ? 'Hoy termina tu prueba.' : 'Mañana termina tu prueba.';
+  var dato = datoMesPrueba();
+  return dato ? ini + ' ' + dato + ' Para seguir, $199 pago único, con impuestos incluidos y sin suscripción.'
+    : ini + ' Entre más registres, más claro ves a dónde se va tu dinero. Todavía estás a tiempo de probar tus sobres y tu cierre de mes.';
+}
+// Uno a los 5 días y otro el último día, cada uno una sola vez; si no abrió ese día, la primera vez que abra después.
+function recordatorioPrueba() {
+  if (tieneLicencia() || !E.pruebaFin || !puedeEscribir()) return;
+  var dias = diasPrueba();
+  if (dias > 5) return;
+  if (dias <= 1) { if (E.pruebaAviso34) return; E.pruebaAviso34 = true; E.pruebaAviso30 = true; }
+  else { if (E.pruebaAviso30) return; E.pruebaAviso30 = true; }
+  guardar();
+  dlg({e: '\uD83C\uDF3F', t: 'Tu prueba está por terminar', s: textoRecordatorioPrueba(dias),
+    btns: [{l: 'Comprar — $199', c: 'p', f: function() { irLemon(); }}, {l: 'Ya compré, tengo mi código', c: 's', f: function() { dlgCodigo(); }}, {l: 'Ahora no', c: 's', f: null}]});
+}
+
 function avisoInicioPrueba(despues) {
   E.pruebaAvisoInicio = true;
   guardar();
   dlg({e:'\uD83C\uDF81', t:'Tu prueba de ' + DIAS_PRUEBA + ' d\u00EDas comenz\u00F3',
-    s:'Tienes acceso completo hasta el ' + fechaFinPruebaTxt() + '. Puedes ver los d\u00EDas que te quedan en tu Perfil.',
+    s:'35 d\u00EDas gratis con todo incluido; despu\u00E9s $199 pago \u00FAnico, sin cargos autom\u00E1ticos. Tienes acceso completo hasta el ' + fechaFinPruebaTxt() + '. Puedes ver los d\u00EDas que te quedan en tu Perfil.',
     btns:[{l:'\u00A1Empezar! \uD83C\uDF31', c:'p', f:function() { if (despues) despues(); }}]
   });
 }
@@ -1516,7 +1558,7 @@ function avisoFinPrueba() {
   E.pruebaAvisoFin = true;
   guardar();
   dlg({e:'\uD83C\uDF3F', t:'Tus ' + DIAS_PRUEBA + ' días de prueba terminaron',
-    s:'Tus datos están a salvo y puedes consultarlos, exportarlos y respaldarlos cuando quieras. ' +
+    s:(datoMesPrueba() ? datoMesPrueba() + ' ' : '') + 'Tus datos están a salvo y puedes consultarlos, exportarlos y respaldarlos cuando quieras. ' +
       'Continúa justo donde te quedaste: $199, pago único con impuestos incluidos, sin suscripción.',
     btns:[
       {l:'Comprar \u2014 $199', c:'p', f:function() { irLemon(); }},
@@ -1709,7 +1751,7 @@ function wRecalc() {
 
 var CAMPOS_LICENCIA = ['prem','premTipo','fechaPrem','fechaExpPrem','diasPrem','premExpiradoAviso',
   'codigosUsados','lsLicenseKey','lsInstanceId','horaServidorOffset','horaServidorSync',
-  'maxHoraVista','pruebaInicio','pruebaFin','pruebaAvisoInicio','pruebaAvisoFin','lsValidada','licRevocada'];
+  'maxHoraVista','pruebaInicio','pruebaFin','pruebaAvisoInicio','pruebaAvisoFin','lsValidada','licRevocada','pruebaAviso30','pruebaAviso34'];
 function dlgRestaurar() {
   var mo = document.createElement('div');
   mo.id = 'mo-rest';
@@ -1920,6 +1962,7 @@ function iniciarApp() {
     chkCumpleRetro();
     // Después de los avisos de inicio (cumpleaños se abre a los 600 ms)
     setTimeout(function() { mostrarCuandoLibre(preguntarVencPendientes); }, 1200);
+    setTimeout(function() { mostrarCuandoLibre(recordatorioPrueba); }, 1600);
   }
 }
 function chkCumpleRetro(){
@@ -5555,6 +5598,7 @@ function abrirPremium(){
   st('prem-cerrar', consulta ? 'Solo consultar' : 'Ahora no');
   var bC = document.getElementById('prem-comprar'); if (bC) bC.style.display = lic ? 'none' : '';
   var bK = document.getElementById('prem-codigo'); if (bK) bK.style.display = lic ? 'none' : '';
+  var bP = document.getElementById('prem-pasos'); if (bP) bP.style.display = lic ? 'none' : '';
   document.getElementById('mo-prem').classList.add('on');
 }
 function irLemon(){
@@ -5702,7 +5746,7 @@ function revocarLicencia() {
   renderPerfil();
   mostrarCuandoLibre(function() {
     dlg({e: '\uD83D\uDD12', t: 'Tu licencia ya no está activa',
-      s: 'Lemon Squeezy indica que tu compra se reembolsó o se desactivó. Tus datos siguen aquí y puedes consultarlos y exportarlos.',
+      s: 'Tu licencia ya no está activa porque la compra se reembolsó o se canceló. Tus datos siguen aquí: puedes consultarlos y exportarlos. Si crees que es un error, escríbenos a adondesefueapp@gmail.com.',
       btns: [{l: 'Comprar — $199', c: 'p', f: function() { irLemon(); }}, {l: 'Ya compré, tengo mi código', c: 's', f: function() { dlgCodigo(); }}, {l: 'Entendido', c: 's', f: null}]});
   });
 }
