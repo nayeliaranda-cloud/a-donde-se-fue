@@ -770,15 +770,8 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     if (window.Sentry) Sentry.init({
       dsn: "https://e04667b00bc4e3bcf7749b46b60616d5@o4512103369736192.ingest.us.sentry.io/4512103397195776",
       environment: "production",
-      tracesSampleRate: 0.1,
-      integrations: [
-        new Sentry.Replay({
-          maskAllText: true,
-          blockAllMedia: true,
-        }),
-      ],
-      replaysSessionSampleRate: 0.1,
-      replaysOnErrorSampleRate: 1.0,
+      sendDefaultPii: false,
+      beforeBreadcrumb: function(b) { return b && b.category === 'console' ? null : b; },
     });
   </script></head>
 <body>
@@ -1192,7 +1185,7 @@ body{font-family:var(--fb);background:var(--cr);color:var(--ca);width:100%;min-h
     </div>
     <div style="background:var(--crd);border-radius:12px;padding:14px;margin-top:16px">
       <div style="font-weight:700;font-size:13.5px;color:var(--ca);margin-bottom:6px">🔒 Tu privacidad</div>
-      <div style="font-size:12.5px;color:var(--cam);line-height:1.6">Todo lo que registras se guarda únicamente en este dispositivo. No usamos analítica ni cookies, y nunca compartimos tu información financiera con nadie. <a href="privacidad.html" target="_blank" style="color:var(--te)">Ver aviso de privacidad completo →</a></div>
+      <div style="font-size:12.5px;color:var(--cam);line-height:1.6">Todo lo que registras se guarda únicamente en este dispositivo. No usamos cookies ni publicidad. Si la app falla, se envía un reporte técnico del error, sin tus datos. <a href="privacidad.html" target="_blank" style="color:var(--te)">Ver aviso de privacidad completo →</a></div>
     </div>
     <button onclick="cerrarMo('mo-acerca')" style="width:100%;margin-top:18px;padding:14px;border:none;border-radius:14px;background:var(--te);color:#fff;font-weight:700;font-size:14px">Cerrar</button>
   </div>
