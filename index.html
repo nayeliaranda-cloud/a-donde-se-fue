@@ -1709,7 +1709,7 @@ function wRecalc() {
 
 var CAMPOS_LICENCIA = ['prem','premTipo','fechaPrem','fechaExpPrem','diasPrem','premExpiradoAviso',
   'codigosUsados','lsLicenseKey','lsInstanceId','horaServidorOffset','horaServidorSync',
-  'maxHoraVista','pruebaInicio','pruebaFin','pruebaAvisoInicio','pruebaAvisoFin'];
+  'maxHoraVista','pruebaInicio','pruebaFin','pruebaAvisoInicio','pruebaAvisoFin','lsValidada','licRevocada'];
 function dlgRestaurar() {
   var mo = document.createElement('div');
   mo.id = 'mo-rest';
@@ -1799,6 +1799,7 @@ function restProcesar() {
         var iniResp = parsed.pruebaInicio ? new Date(parsed.pruebaInicio).getTime() : NaN;
         if (!isNaN(iniResp)) iniResp = Math.min(iniResp, ahora().getTime()); // nunca en el futuro
         var maxResp = Number(parsed.maxHoraVista) || 0;
+        var llaveResp = parsed.lsLicenseKey;
         var delDispositivo = {};
         CAMPOS_LICENCIA.forEach(function(c) { delDispositivo[c] = E[c]; delete parsed[c]; });
         // Merge sobre los valores por defecto (igual que la carga inicial),
@@ -1824,6 +1825,7 @@ function restProcesar() {
         guardar();
         iniciarApp();
         setTimeout(function(){ toast('Datos recuperados. ' + nRegs + ' registros restaurados'); }, 400);
+        ofrecerReactivar(llaveResp);
       }},
       {l:'Cancelar', c:'s', f:cerrarDlg}
     ]
@@ -1909,6 +1911,7 @@ function iniciarApp() {
   irA('p-ini');
   mostrarInstall();
   revisarRecordatorioRespaldo();
+  revalidarLicencia();
   if (!E.pruebaAvisoInicio && !tieneLicencia() && puedeEscribir()) {
     mostrarCuandoLibre(function() { avisoInicioPrueba(chkCumpleRetro); });
   } else if (debeAvisarFinPrueba()) {
@@ -5602,16 +5605,54 @@ function activarLicenciaLemonSqueezy(licenseKey){
     toast('📶 Necesitas internet para activar tu código — conecta tus datos o WiFi e intenta de nuevo. Tu código no se pierde, puedes activarlo cuando quieras.');
     return;
   }
-  toast('Verificando tu código… ⏳');
-  var body = 'license_key=' + encodeURIComponent(licenseKey)
-    + '&instance_name=' + encodeURIComponent('ADSF-' + Date.now());
-  fetch('https://api.lemonsqueezy.com/v1/licenses/activate', {
+  activarEnLS(licenseKey);
+}
+var LS_API = 'https://api.lemonsqueezy.com/v1/licenses/';
+function postLS(accion, body) {
+  return fetch(LS_API + accion, {
     method: 'POST',
     headers: {'Accept':'application/json','Content-Type':'application/x-www-form-urlencoded'},
     body: body
-  }).then(function(r){ return r.json(); }).then(function(data){
-    if (!data || !data.activated) {
-      toast((data && data.error) ? data.error : 'Código no válido — revisa que esté bien escrito');
+  }).then(function(r) { return r.json().then(function(d) { return {http: r.status, d: d || {}}; }); });
+}
+function aplicarLicencia(licenseKey, instanceId) {
+  E.prem = true;
+  E.premTipo = 'compra';
+  E.fechaPrem = new Date().toISOString();
+  E.fechaExpPrem = null; // compra real = desbloqueo permanente, sin expiración
+  E.diasPrem = null;
+  E.lsLicenseKey = licenseKey;
+  E.lsInstanceId = instanceId;
+  E.lsValidada = ahora().toISOString();
+  delete E.licRevocada;
+  guardar();
+  cerrarMo('mo-prem');
+  toast('¡Compra verificada! Todo desbloqueado para siempre \uD83C\uDF89');
+  renderPerfil();
+  if (E.perfil.nom) actualizarUI(); // quita el chip "Modo consulta"
+}
+function toastSinConexionLS() {
+  toast('\uD83D\uDCF6 No pudimos verificar tu código — revisa tu conexión (datos o WiFi) e intenta de nuevo. Tu código sigue siendo válido.');
+}
+// Mismo dispositivo y mismo código: se reutiliza la activación, sin gastar un cupo.
+function activarEnLS(licenseKey) {
+  toast('Verificando tu código… ⏳');
+  var mismo = E.lsInstanceId && E.lsLicenseKey === licenseKey;
+  if (!mismo) { activarNuevaLS(licenseKey); return; }
+  postLS('validate', 'license_key=' + encodeURIComponent(licenseKey) + '&instance_id=' + encodeURIComponent(E.lsInstanceId)).then(function(x) {
+    var c = clasificarLS(x.http, x.d);
+    if (c === 'valida') aplicarLicencia(licenseKey, E.lsInstanceId);
+    else if (c === 'invalida') toast('Este código ya no está activo — escríbenos si crees que es un error');
+    else activarNuevaLS(licenseKey);
+  }).catch(toastSinConexionLS);
+}
+function activarNuevaLS(licenseKey) {
+  var body = 'license_key=' + encodeURIComponent(licenseKey)
+    + '&instance_name=' + encodeURIComponent('ADSF-' + Date.now());
+  postLS('activate', body).then(function(x) {
+    var data = x.d;
+    if (!data.activated) {
+      toast(data.error ? data.error : 'Código no válido — revisa que esté bien escrito');
       return;
     }
     var meta = data.meta || {};
@@ -5624,20 +5665,53 @@ function activarLicenciaLemonSqueezy(licenseKey){
       toast('Este código ya no está activo — escríbenos si crees que es un error');
       return;
     }
-    E.prem = true;
-    E.premTipo = 'compra';
-    E.fechaPrem = new Date().toISOString();
-    E.fechaExpPrem = null; // compra real = desbloqueo permanente, sin expiración
-    E.diasPrem = null;
-    E.lsLicenseKey = licenseKey;
-    E.lsInstanceId = data.instance ? data.instance.id : null;
-    guardar();
-    cerrarMo('mo-prem');
-    toast('¡Compra verificada! Todo desbloqueado para siempre 🎉');
-    renderPerfil();
-    if (E.perfil.nom) actualizarUI(); // quita el chip "Modo consulta"
-  }).catch(function(){
-    toast('📶 No pudimos verificar tu código — revisa tu conexión (datos o WiFi) e intenta de nuevo. Tu código sigue siendo válido.');
+    aplicarLicencia(licenseKey, data.instance ? data.instance.id : null);
+  }).catch(toastSinConexionLS);
+}
+// Solo cuenta como inválida si Lemon Squeezy lo dice: reembolsada o desactivada, vencida o inexistente.
+// Falta de internet, errores del servidor o cualquier otra respuesta no cambian nada.
+function clasificarLS(http, d) {
+  if (!d || typeof d !== 'object' || http >= 500 || http === 429) return 'otra';
+  var lic = d.license_key || {}, meta = d.meta || {};
+  if (d.meta && (String(meta.store_id) !== String(LS_STORE_ID) || String(meta.product_id) !== String(LS_PRODUCT_ID))) return 'otra';
+  if (lic.status === 'disabled' || lic.status === 'expired') return 'invalida';
+  if (lic.expires_at && new Date(lic.expires_at).getTime() <= ahora().getTime()) return 'invalida';
+  if (d.valid === true) return 'valida';
+  if (http === 404 && /not found/i.test(String(d.error || ''))) return 'invalida';
+  return 'otra';
+}
+// Revalida cada 7 días, solo con internet.
+function revalidarLicencia() {
+  if (!tieneLicencia() || LS_PRODUCT_ID.indexOf('TU-') !== -1 || navigator.onLine === false) return Promise.resolve('omitida');
+  if (E.lsValidada && ahora().getTime() - new Date(E.lsValidada).getTime() < 7 * 864e5) return Promise.resolve('omitida');
+  var body = 'license_key=' + encodeURIComponent(E.lsLicenseKey) + (E.lsInstanceId ? '&instance_id=' + encodeURIComponent(E.lsInstanceId) : '');
+  return postLS('validate', body).then(function(x) {
+    var c = clasificarLS(x.http, x.d);
+    if (c === 'valida') { E.lsValidada = ahora().toISOString(); guardar(); }
+    else if (c === 'invalida') revocarLicencia();
+    return c;
+  }).catch(function() { return 'sinConexion'; });
+}
+function revocarLicencia() {
+  E.prem = false;
+  E.premTipo = null;
+  E.licRevocada = ahora().toISOString();
+  delete E.lsValidada;
+  guardar();
+  if (E.perfil.nom) actualizarUI();
+  renderPerfil();
+  mostrarCuandoLibre(function() {
+    dlg({e: '\uD83D\uDD12', t: 'Tu licencia ya no está activa',
+      s: 'Lemon Squeezy indica que tu compra se reembolsó o se desactivó. Tus datos siguen aquí y puedes consultarlos y exportarlos.',
+      btns: [{l: 'Comprar — $199', c: 'p', f: function() { irLemon(); }}, {l: 'Ya compré, tengo mi código', c: 's', f: function() { dlgCodigo(); }}, {l: 'Entendido', c: 's', f: null}]});
+  });
+}
+// Al restaurar un respaldo de otro dispositivo con licencia: nunca se copia, se ofrece reactivarla.
+function ofrecerReactivar(licenseKey) {
+  if (!licenseKey || tieneLicencia()) return;
+  mostrarCuandoLibre(function() {
+    dlg({e: '\uD83C\uDF9F\uFE0F', t: '¿Reactivar tu compra?', s: 'Este respaldo viene de un dispositivo con licencia. Para usarla aquí hay que reactivarla: ocupa uno de tus 3 dispositivos.',
+      btns: [{l: 'Reactivar', c: 'p', f: function() { activarLicenciaLemonSqueezy(licenseKey); }}, {l: 'Ahora no', c: 's', f: null}]});
   });
 }
 
