@@ -7924,7 +7924,7 @@ function renderHistoria() {
         (item.provisiones && txtProvisiones(item.provisiones)
           ? '<div style="font-size:11px;color:#7D5F4E;margin:4px 0">\uD83E\uDDFE ' + escHtml(txtProvisiones(item.provisiones)) + '</div>' : '') +
         (sobresSinPagos(item).length
-          ? '<div style="margin-top:8px;font-size:10px;color:#7D5F4E;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Gastos por sobre</div>' +
+          ? '<div style="margin-top:8px;font-size:10px;color:#7D5F4E;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">¿En qué se fue?</div>' +
             sobresSinPagos(item).sort(function(a, b) { return b.mto - a.mto; }).map(function(s) {
               return '<div class="historia-dato">' +
                 '<span class="historia-dato-lbl">' + s.ico + ' ' + escHtml(s.nom) + '</span>' +
