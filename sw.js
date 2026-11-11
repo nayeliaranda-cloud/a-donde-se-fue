@@ -8,6 +8,8 @@ const ASSETS_TO_CACHE = [
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
+  '/icon-maskable-512.png',
+  '/privacidad.html',
   '/apple-touch-icon.png',
   '/fonts/fraunces.woff2',
   '/fonts/dm-sans.woff2',

@@ -5760,6 +5760,21 @@ function ofrecerReactivar(licenseKey) {
 }
 
 // ── Protección de datos (Bloque 9 · Parte b) ──
+// Hay una versión nueva instalada: se ofrece recargar. La primera instalación no avisa.
+function vigilarVersion(reg) {
+  if (!reg || !reg.addEventListener) return;
+  reg.addEventListener('updatefound', function() {
+    var w = reg.installing;
+    if (!w) return;
+    w.addEventListener('statechange', function() {
+      if (w.state === 'installed' && navigator.serviceWorker.controller) avisoVersionNueva();
+    });
+  });
+}
+function avisoVersionNueva() {
+  var b = document.getElementById('ban-version');
+  if (b) b.style.display = 'flex';
+}
 function pedirPersistencia() {
   try {
     if (navigator.storage && navigator.storage.persist) {
@@ -11698,6 +11713,10 @@ function mostrarAnalisisInicial() {
 
 
 <!-- BANNER INSTALAR COMO APP -->
+<div id="ban-version" style="display:none;position:fixed;top:12px;left:12px;right:12px;z-index:9000;background:#3D2B1F;color:#fff;border-radius:12px;padding:10px 12px;align-items:center;gap:10px;font-size:13px">
+  <div style="flex:1">Hay una versión nueva</div>
+  <button onclick="location.reload()" style="background:#C4704F;color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--fb)">Actualizar</button>
+</div>
 <div id="ban-install">
   <div class="bi-top">
     <div class="bi-ico">📲</div>
@@ -11744,7 +11763,7 @@ function mostrarAnalisisInicial() {
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/sw.js').catch(function (err) {
+    navigator.serviceWorker.register('/sw.js').then(vigilarVersion).catch(function (err) {
       console.log('Error al registrar el Service Worker:', err);
     });
   });
